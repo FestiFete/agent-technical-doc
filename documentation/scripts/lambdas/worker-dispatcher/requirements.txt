@@ -1,0 +1,1 @@
+# boto3 est fourni par le runtime Lambda (pas besoin de l'empaqueter).
