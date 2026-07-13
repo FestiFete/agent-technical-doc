@@ -128,3 +128,19 @@ d'implémentation » de `requirements.md`).
 - [x] _(code)_ Tests de l'**entrypoint async** (`agent.py`, faux SDK injecté) et de
   la **signature RS256 réelle** (skip si `cryptography`/PyJWT absents ; validée en
   venv). Extraction tarball déjà couverte par `test_repo_reader.py`.
+
+## Tests E2E (progression)
+
+- [x] **Phase 0 — Contrats locaux** : tests RS256 réel + entrypoint async + tarball
+  (fermeture des angles morts de l'injection de dépendances).
+- [x] **Phase 1 — Runner « vraies dépendances »** (`e2e/local_run.py`) : exécute la
+  vraie orchestration (App/PAT, tarball 302, Bedrock, draw.io, commit) sans chaîne
+  AWS. Dry-run par défaut (écritures GitHub neutralisées), `--commit` pour le réel.
+  Guardé par `tests/test_local_run.py`. _Nécessite creds AWS Bedrock + GitHub pour
+  une exécution réelle (non jouée en CI hors ligne)._
+- [ ] **Phase 2 — Déploiement sandbox + smoke manuel** (PR → `@mention` → doc).
+- [ ] **Phase 3 — Harnais E2E automatisé** : événement synthétique signé HMAC →
+  chaîne AWS complète ; fixtures PR/branche, polling async, assertions structurelles,
+  teardown (idempotence + quota).
+- [ ] **Phase 4 — Industrialisation** : stack éphémère (apply→E2E→destroy) ou
+  sandbox long-vécu, assertions d'observabilité (EMF par `correlation_id`), CI nightly.
