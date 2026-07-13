@@ -203,6 +203,10 @@ Progression et procédures détaillées dans **`e2e/README.md`** :
 
 ## Limites POC & évolutions
 
+> 📋 Audit approfondi complet (qualité, sécurité, performance, scalabilité, coûts,
+> Well-Architected, pros/cons, axes d'amélioration, reste à faire) : voir
+> [`AUDIT.md`](AUDIT.md).
+
 - GitHub uniquement (GitLab / self-hosted hors périmètre).
 - **GitHub App** (recommandée) : tokens d'installation courts (~1 h), permissions
   fines, multi-repo. Repli **PAT** conservé pour la migration (secret `{"token":...}`).
