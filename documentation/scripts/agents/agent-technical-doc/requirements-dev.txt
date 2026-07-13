@@ -1,0 +1,6 @@
+# Dépendances de développement / test (en complément de requirements.txt).
+#   pip install -r requirements.txt -r requirements-dev.txt
+#
+# Note : cryptography + PyJWT (pour le test RS256 réel) viennent déjà de
+# requirements.txt via `pyjwt[crypto]`.
+pytest>=8.0

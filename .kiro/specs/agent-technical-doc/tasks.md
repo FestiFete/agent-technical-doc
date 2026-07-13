@@ -144,6 +144,9 @@ d'implémentation » de `requirements.md`).
   côté sandbox** (droits AWS + GitHub App/webhook requis).
 - [ ] **Phase 3 — Harnais E2E automatisé** : événement synthétique signé HMAC →
   chaîne AWS complète ; fixtures PR/branche, polling async, assertions structurelles,
-  teardown (idempotence + quota).
+  teardown (idempotence + quota). Livré : `e2e/harness.py` + cross-check hors ligne
+  `tests/test_harness.py` (événement/signature acceptés par la vraie logique webhook)
+  + test gated `tests/test_e2e_webhook.py` (marqueur `e2e`, skippé sans stack).
+  **Exécution bout-en-bout à faire sur stack déployée.**
 - [ ] **Phase 4 — Industrialisation** : stack éphémère (apply→E2E→destroy) ou
   sandbox long-vécu, assertions d'observabilité (EMF par `correlation_id`), CI nightly.

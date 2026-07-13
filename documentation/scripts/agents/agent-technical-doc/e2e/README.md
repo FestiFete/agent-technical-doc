@@ -42,7 +42,7 @@ Toutes les commandes sont lancées **depuis** le dossier de l'agent :
 cd documentation/scripts/agents/agent-technical-doc
 python3 -m venv .venv
 source .venv/bin/activate          # le prompt doit afficher (.venv)
-pip install -r requirements.txt    # boto3, strands-agents[otel], pyjwt[crypto], …
+pip install -r requirements.txt -r requirements-dev.txt   # runtime + pytest
 python3 -c "import botocore, boto3, strands; print('deps OK')"
 ```
 
@@ -273,6 +273,62 @@ done
 | Échec auth GitHub | Secret App mal formé, App non installée sur le dépôt |
 | `AccessDeniedException` Bedrock | Modèle non activé dans la région / rôle runtime |
 | DLQ non vide | Inspecter le message, tracer par `correlation_id`, corriger, redrive |
+
+## Phase 3 — Harnais E2E automatisé
+
+Déclenche la chaîne **déployée** via un événement `issue_comment` **synthétique
+signé HMAC**, posté directement sur l'API Gateway (sans dépendre de la livraison
+webhook de GitHub), puis vérifie automatiquement le résultat.
+
+Deux niveaux, selon ce qui est disponible :
+
+### a) Hors ligne (toujours joué, dans la suite normale)
+
+`tests/test_harness.py` valide — **sans stack ni réseau** — que l'événement et la
+signature produits par `e2e/harness.py` seraient **acceptés par la vraie logique
+du webhook** (`verify_signature` + `evaluate_comment`, importés par chemin). C'est
+le garde-fou qui garantit que le harnais reste cohérent avec le webhook.
+
+### b) Bout-en-bout (stack déployée requise)
+
+`tests/test_e2e_webhook.py` (marqueur `e2e`) : **skippé** si l'environnement d'une
+stack déployée n'est pas fourni. Sinon il POST l'événement signé, attend un
+`202`, puis sonde via `smoke_check` jusqu'au `PASS`.
+
+```bash
+cd scripts/agents/agent-technical-doc
+export E2E_API_URL="$(cd ../../../terraform/ingestion && terraform output -raw webhook_url)"
+export E2E_WEBHOOK_SECRET='le-meme-secret-hmac'
+export E2E_REPO='FestiFete/RogerVoiceTest'
+export E2E_PR='1'
+read -rs GITHUB_TOKEN && export GITHUB_TOKEN     # ou GITHUB_APP_SECRET
+# optionnel : export E2E_TIMEOUT=420  E2E_MENTION='@agent-technical-doc'
+
+python3 -m pytest tests/test_e2e_webhook.py -m e2e -v
+```
+
+Options utiles : `-m e2e` pour ne cibler que le test E2E ; le lancer avec
+`E2E_*` non défini le **skippe** proprement (utile en CI hors ligne).
+
+### Précautions (idempotence, quota, coût)
+
+- **Idempotence** `repo#pr#sha` : si le head de la PR n'a pas changé depuis un run
+  réussi, l'agent renvoie `skipped_duplicate`. Le test reste `PASS` (doc + commentaire
+  de succès déjà présents), mais pour valider un **nouveau** run, pousse un commit
+  sur la branche de la PR (nouveau sha) ou supprime la clé DynamoDB.
+- **Quota anti-DoS** : en env de test, mettre `MAX_RUNS_PER_REPO=0` (désactivé) ou
+  purger les compteurs `ratelimit#…` entre deux campagnes.
+- **comment_id** : le harnais en génère un unique par run → pas de dédup webhook.
+- **Coût / durée** : chaque run consomme des tokens Bedrock et prend quelques
+  minutes ; réserver ce test au **on-demand / nightly**, pas à chaque commit.
+- **Nettoyage** : le harnais ne supprime pas le commit de doc produit (artefact
+  attendu). Prévoir un teardown si le dépôt de test doit rester propre.
+
+### Prochaines étapes (Phase 4)
+
+Industrialisation : stack éphémère (`apply` → E2E → `destroy`) ou sandbox
+long-vécu, assertions d'observabilité (métriques EMF par `correlation_id`), job CI
+nightly.
 
 ### Notes
 
