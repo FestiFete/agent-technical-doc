@@ -171,6 +171,7 @@ cd ../../lambdas && python3 -m pytest -q
   courts, permissions fines, multi-repo ; le code des tools reste compatible).
 - Forks non pris en charge.
 - Schémas `.drawio` sans rendu image (source éditable versionnée).
-- À confirmer sur la doc AWS : mode d'invocation asynchrone natif d'AgentCore
-  (permettrait un worker « fire-and-forget ») et durée max de session (voir
-  `specs/design.md` §7).
+- Invocation **asynchrone native** AgentCore : l'agent lance le run en tâche de
+  fond (`add_async_task`/`HealthyBusy`) et rend la main immédiatement ; le worker
+  ne bloque plus (timeout court, pas de plafond 15 min synchrone). Vérifier que
+  `max_lifetime_in_seconds` du runtime couvre la durée d'un run complet.

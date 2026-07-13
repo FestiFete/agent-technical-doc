@@ -40,8 +40,8 @@ variable "allowed_author_associations" {
 # --- Résilience / dimensionnement --------------------------------------------
 variable "worker_timeout_seconds" {
   type        = number
-  description = "Timeout de la Lambda worker (maintient la connexion streaming au runtime)"
-  default     = 900
+  description = "Timeout de la Lambda worker. Invocation asynchrone : le worker ne fait qu'un appel InvokeAgentRuntime non bloquant (ack immédiat) puis retourne — un timeout court suffit."
+  default     = 60
 }
 
 variable "webhook_timeout_seconds" {

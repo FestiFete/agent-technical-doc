@@ -106,7 +106,9 @@ def status_response(
 ) -> dict:
     """Réponse structurée renvoyée par l'entrypoint.
 
-    ``status`` ∈ {complete, skipped_fork, failed, invalid_request}.
+    ``status`` ∈ {accepted, complete, skipped_fork, skipped_duplicate, failed,
+    invalid_request}. ``accepted`` = run lancé en tâche de fond (asynchrone) ;
+    le statut terminal réel est restitué via le commentaire de PR.
     """
     return {
         "result": {
