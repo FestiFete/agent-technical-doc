@@ -31,23 +31,129 @@ unitaires (injection de dépendances) ne couvrent pas :
 4. Une **PR ouverte** sur un **dépôt bac-à-sable** (branche du dépôt, pas un fork ;
    l'auteur doit être OWNER/MEMBER/COLLABORATOR).
 
-### Utilisation
+### Pas à pas complet (dry-run avec aperçu local)
+
+Toutes les commandes sont lancées **depuis** le dossier de l'agent :
+`documentation/scripts/agents/agent-technical-doc`.
+
+#### 1. Environnement Python (une fois)
 
 ```bash
-# Dry-run (DÉFAUT) : lectures + analyse réelles, écritures GitHub interceptées.
-GITHUB_TOKEN=ghp_xxx AWS_PROFILE=sandbox \
-  python e2e/local_run.py --repo acme/widget --pr 42 -v
-
-# Commit RÉEL sur la branche de la PR (dépôt bac-à-sable uniquement)
-GITHUB_APP_SECRET='{"app_id":"123","private_key":"-----BEGIN…"}' AWS_PROFILE=sandbox \
-  python e2e/local_run.py --repo acme/widget --pr 42 --commit
-
-# Forcer un modèle / une région
-python e2e/local_run.py --repo acme/widget --pr 42 --model eu.anthropic.claude-haiku-4-5 --region eu-central-1
+cd documentation/scripts/agents/agent-technical-doc
+python3 -m venv .venv
+source .venv/bin/activate          # le prompt doit afficher (.venv)
+pip install -r requirements.txt    # boto3, strands-agents[otel], pyjwt[crypto], …
+python3 -c "import botocore, boto3, strands; print('deps OK')"
 ```
 
-Options : `--commit` (écritures réelles ; défaut = dry-run), `--model`, `--region`,
-`-v` (debug).
+#### 2. Variables d'environnement (auth GitHub + AWS Bedrock)
+
+```bash
+# Token GitHub saisi SANS le coller dans la commande (invisible, hors historique)
+read -rs GITHUB_TOKEN && export GITHUB_TOKEN     # colle le PAT, puis Entrée
+#   (⚠️ pas d'espace autour du '=' si tu utilises 'export VAR=valeur')
+
+export AWS_PROFILE=NewSysOps-375039967495        # profil avec accès Bedrock
+export BEDROCK_REGION=eu-central-1
+```
+
+#### 3. Lancer le runner en dry-run avec `--out`
+
+```bash
+python3 e2e/local_run.py \
+  --repo FestiFete/RogerVoiceTest \
+  --pr 1 \
+  --out /tmp/agent-doc-preview \
+  -v
+```
+
+- `--repo owner/repo` : ton dépôt bac-à-sable (pas un placeholder).
+- `--pr N` : numéro d'une **PR ouverte** sur ce dépôt.
+- `--out <dir>` : répertoire (chemin **absolu** recommandé) où écrire l'aperçu.
+- `-v` : logs détaillés.
+
+#### 4. Lire la sortie
+
+Le run affiche le bloc `RÉSULTAT` puis, si tout s'est bien passé :
+
+```
+===== RÉSULTAT =====
+{
+  "status": "complete",
+  "files": ["docs/agent/README.md", "docs/agent/overview.md", ...],
+  ...
+}
+
+8 fichiers écrits sous /tmp/agent-doc-preview/ (aperçu local, non commités)
+OK (DRY-RUN (aucune écriture GitHub)). Fichiers : 8
+```
+
+⚠️ La ligne « **N fichiers écrits sous …** » n'apparaît **que** si :
+- `--out` est bien passé **et**
+- le statut est `complete` (l'aperçu est capturé au moment du « commit » factice).
+
+#### 5. Lire les fichiers générés
+
+```bash
+# Lister l'arborescence produite
+find /tmp/agent-doc-preview -type f
+
+# Afficher un fichier
+cat /tmp/agent-doc-preview/docs/agent/overview.md
+
+# Vue d'ensemble rapide de tous les Markdown
+for f in /tmp/agent-doc-preview/docs/agent/*.md; do
+  echo "===== $f ====="; cat "$f"; echo
+done
+```
+
+Arborescence attendue :
+
+```
+/tmp/agent-doc-preview/docs/agent/
+├── README.md            # index
+├── overview.md          # finalité
+├── stack.md             # stack technique
+├── architecture.md      # patterns & architecture
+├── functional.md        # vue fonctionnelle
+└── diagrams/
+    ├── c4-context.drawio
+    ├── c4-container.drawio
+    ├── c4-component.drawio
+    ├── sequence-main-flows.drawio
+    └── data-model-er.drawio   # si un modèle de données est détecté
+```
+
+Les `.drawio` s'ouvrent dans [diagrams.net](https://app.diagrams.net) (Fichier →
+Ouvrir) ou l'extension Draw.io Integration de VS Code.
+
+#### 6. (optionnel) Commit réel
+
+Une fois l'aperçu validé, pour écrire réellement sur la branche de la PR (dépôt
+bac-à-sable uniquement) :
+
+```bash
+python3 e2e/local_run.py --repo FestiFete/RogerVoiceTest --pr 1 --commit -v
+```
+
+### Options
+
+| Option | Effet |
+|--------|-------|
+| `--repo owner/repo` | Dépôt cible (**requis**) |
+| `--pr N` | Numéro de PR ouverte (**requis**) |
+| `--out <dir>` | Écrit l'aperçu local des fichiers générés (dry-run) |
+| `--commit` | Écritures **réelles** (commit + commentaire). Défaut : dry-run |
+| `--model <id>` | Override `MODEL_ID` (ex. forcer Haiku) |
+| `--region <r>` | Override `BEDROCK_REGION` |
+| `-v` | Logs détaillés |
+
+Contrôle du coût (rester sur Haiku malgré un gros dépôt) :
+
+```bash
+MODEL_ESCALATION_MAX_FILES=100000 MODEL_ESCALATION_MAX_BYTES=100000000 \
+  python3 e2e/local_run.py --repo FestiFete/RogerVoiceTest --pr 1 --out /tmp/agent-doc-preview -v
+```
 
 ### Ce que le dry-run n'exerce pas
 
