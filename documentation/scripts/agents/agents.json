@@ -4,7 +4,10 @@
         "description": "agent-technical-doc — génère la documentation technique d'un projet à partir d'un dépôt GitHub (déclenché par un @mention dans une PR). Clone en lecture seule, analyse statique (finalité, stack, patterns, architecture), produit du Markdown + des schémas draw.io (C4 + Séquence + ER) commités sur la branche de la PR. Runtime PUBLIC (auth IAM), headless, sans état (ni Memory ni KB).",
         "environment_variables": {
             "BEDROCK_REGION": "eu-central-1",
-            "MODEL_ID": "eu.anthropic.claude-sonnet-4-6",
+            "MODEL_ID": "eu.anthropic.claude-haiku-4-5",
+            "MODEL_ID_ESCALATION": "eu.anthropic.claude-sonnet-4-6",
+            "MODEL_ESCALATION_MAX_FILES": "25",
+            "MODEL_ESCALATION_MAX_BYTES": "400000",
             "MENTION_HANDLE": "@agent-technical-doc",
             "DOC_OUTPUT_DIR": "docs/agent"
         }

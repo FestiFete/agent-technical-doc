@@ -63,7 +63,10 @@ Well-Architected par pilier).
 - Compte AWS + droits de déploiement (IAM, KMS, Lambda, SQS, DynamoDB, API GW,
   Bedrock AgentCore, ECR, S3, CloudWatch).
 - Terraform >= 1.6, Docker (buildx pour ARM64), AWS CLI configuré.
-- Accès au modèle Bedrock configuré (`MODEL_ID`, défaut `eu.anthropic.claude-sonnet-4-6`).
+- Accès aux modèles Bedrock configurés : modèle primaire économique
+  (`MODEL_ID`, défaut `eu.anthropic.claude-haiku-4-5`) et modèle d'escalade
+  (`MODEL_ID_ESCALATION`, défaut `eu.anthropic.claude-sonnet-4-6`) utilisé
+  automatiquement pour les dépôts volumineux/complexes.
 - Un PAT GitHub de service (permissions minimales : `contents:write`,
   `pull_requests:write`) et un secret HMAC pour le webhook.
 

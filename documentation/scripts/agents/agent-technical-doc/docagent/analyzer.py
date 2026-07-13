@@ -96,11 +96,50 @@ def _extract_json(text: str) -> dict:
     return json.loads(text[start:end + 1])
 
 
+def select_model(
+    repo_context: dict,
+    *,
+    primary: str | None = None,
+    escalation: str | None = None,
+    max_files: int | None = None,
+    max_bytes: int | None = None,
+) -> tuple[str, str]:
+    """Choisit le modèle Bedrock selon la taille/complexité du contexte.
+
+    Optimisation de coût : le modèle primaire (économique, Haiku) suffit pour la
+    grande majorité des dépôts, l'output étant un JSON structuré cadré. On escalade
+    vers le modèle puissant (Sonnet) uniquement quand le contexte sélectionné est
+    volumineux (beaucoup de fichiers ou d'octets), là où une analyse plus fine est
+    justifiée.
+
+    Fonction pure (aucun effet de bord, aucune dépendance réseau) → testable.
+    Retourne ``(model_id, raison)``. Un seuil à 0 désactive le critère associé.
+    """
+    primary = primary or config.MODEL_ID
+    escalation = escalation or config.MODEL_ID_ESCALATION
+    max_files = config.MODEL_ESCALATION_MAX_FILES if max_files is None else max_files
+    max_bytes = config.MODEL_ESCALATION_MAX_BYTES if max_bytes is None else max_bytes
+
+    files = repo_context.get("files") or {}
+    n_files = len(files)
+    total_bytes = sum(len(c) for c in files.values() if isinstance(c, str))
+
+    if max_files and n_files > max_files:
+        return escalation, f"escalade: {n_files} fichiers > seuil {max_files}"
+    if max_bytes and total_bytes > max_bytes:
+        return escalation, f"escalade: {total_bytes} octets > seuil {max_bytes}"
+    return primary, f"primaire ({n_files} fichiers, {total_bytes} octets)"
+
+
 class BedrockAnalyzer:
     """Analyseur par défaut basé sur Strands + Bedrock (imports différés)."""
 
-    def __init__(self, *, model_id: str | None = None, region: str | None = None):
+    def __init__(self, *, model_id: str | None = None, escalation_model_id: str | None = None,
+                 region: str | None = None):
+        # model_id explicite → override : désactive la sélection automatique.
+        self._model_override = model_id
         self.model_id = model_id or config.MODEL_ID
+        self.escalation_model_id = escalation_model_id or config.MODEL_ID_ESCALATION
         self.region = region or config.BEDROCK_REGION
 
     def _build_agent(self):
@@ -120,6 +159,15 @@ class BedrockAnalyzer:
         return Agent(model=model, system_prompt=_load_system_prompt() + "\n" + OUTPUT_CONTRACT)
 
     def analyze(self, repo_context: dict) -> dict:
+        if self._model_override:
+            reason = "modèle imposé (override)"
+        else:
+            self.model_id, reason = select_model(
+                repo_context,
+                primary=config.MODEL_ID,
+                escalation=self.escalation_model_id,
+            )
+        logger.info("Analyse avec le modèle %s — %s", self.model_id, reason)
         agent = self._build_agent()
         prompt = _render_context(repo_context)
         result = agent(prompt)

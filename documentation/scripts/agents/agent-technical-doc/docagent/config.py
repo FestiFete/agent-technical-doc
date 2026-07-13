@@ -75,4 +75,16 @@ GITHUB_SERVER = os.environ.get("GITHUB_SERVER", "github.com")
 
 # Bedrock
 BEDROCK_REGION = os.environ.get("BEDROCK_REGION", os.environ.get("AWS_REGION", "eu-central-1"))
-MODEL_ID = os.environ.get("MODEL_ID", "eu.anthropic.claude-sonnet-4-6")
+
+# Sélection de modèle à deux niveaux (coût / qualité).
+# - MODEL_ID : modèle primaire, économique (Haiku), utilisé par défaut.
+# - MODEL_ID_ESCALATION : modèle puissant (Sonnet), utilisé pour les dépôts
+#   volumineux/complexes, où un contexte plus riche justifie une analyse plus fine.
+# L'escalade est décidée par du code déterministe (voir analyzer.select_model)
+# à partir de la taille du contexte sélectionné (nombre de fichiers / octets).
+MODEL_ID = os.environ.get("MODEL_ID", "eu.anthropic.claude-haiku-4-5")
+MODEL_ID_ESCALATION = os.environ.get("MODEL_ID_ESCALATION", "eu.anthropic.claude-sonnet-4-6")
+
+# Seuils d'escalade sur le contexte sélectionné (0 = critère désactivé).
+MODEL_ESCALATION_MAX_FILES = _int_env("MODEL_ESCALATION_MAX_FILES", 25)
+MODEL_ESCALATION_MAX_BYTES = _int_env("MODEL_ESCALATION_MAX_BYTES", 400_000)
