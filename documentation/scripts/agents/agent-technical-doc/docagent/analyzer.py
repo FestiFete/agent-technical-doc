@@ -40,13 +40,38 @@ Réponds UNIQUEMENT par un objet JSON valide (sans texte autour), au format :
   "diagrams": [
     {"path": "diagrams/c4-context.drawio",
      "spec": {"type": "c4", "title": "Contexte",
-              "nodes": [{"id": "u", "label": "Utilisateur", "kind": "person"}],
-              "edges": [{"from": "u", "to": "sys", "label": "utilise"}]}}
+              "nodes": [{"id": "u", "label": "Utilisateur", "kind": "person"},
+                        {"id": "sys", "label": "Système", "kind": "system"}],
+              "edges": [{"from": "u", "to": "sys", "label": "utilise"}]}},
+    {"path": "diagrams/sequence-main-flows.drawio",
+     "spec": {"type": "sequence", "title": "Flux principal",
+              "nodes": [{"id": "user", "label": "Utilisateur", "kind": "actor"},
+                        {"id": "app", "label": "Application", "kind": "container"},
+                        {"id": "api", "label": "API externe", "kind": "system"}],
+              "edges": [{"from": "user", "to": "app", "label": "1. action"},
+                        {"from": "app", "to": "api", "label": "2. requête"},
+                        {"from": "api", "to": "app", "label": "3. réponse"}]}},
+    {"path": "diagrams/data-model-er.drawio",
+     "spec": {"type": "er", "title": "Modèle de données",
+              "nodes": [{"id": "user", "label": "User", "kind": "entity",
+                         "attributes": ["id: int", "email: str"]},
+                        {"id": "order", "label": "Order", "kind": "entity",
+                         "attributes": ["id: int", "user_id: int"]}],
+              "edges": [{"from": "order", "to": "user", "label": "appartient à"}]}}
   ]
 }
-Produis c4-context, c4-container, c4-component, sequence-main-flows, et
-data-model-er UNIQUEMENT si un modèle de données est détecté.
-"""
+Diagrammes attendus : c4-context, c4-container, c4-component, sequence-main-flows,
+et data-model-er (ce dernier UNIQUEMENT si un modèle de données est détecté).
+
+RÈGLE STRICTE — chaque objet de "diagrams" DOIT avoir un "spec.nodes" NON VIDE
+(au moins un nœud) et un "spec.type" ∈ {c4, sequence, er} :
+- séquence : les **participants** sont les nœuds (kind actor/container/system) et les
+  **messages ordonnés** sont les edges (préfixe le label par "1.", "2.", …) ;
+- ER : les **entités** sont les nœuds (kind "entity", avec "attributes") et les
+  **relations** sont les edges.
+Si tu ne peux pas fournir au moins un nœud pertinent pour un diagramme, alors
+N'INCLUS PAS cet objet dans "diagrams" et indique-le dans "missing" (ne renvoie
+jamais un diagramme avec des nœuds vides)."""
 
 
 def _load_system_prompt() -> str:

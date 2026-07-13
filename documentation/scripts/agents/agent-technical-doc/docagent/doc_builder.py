@@ -175,7 +175,10 @@ def assemble_document_set(analysis: dict, *, output_dir: str = DOC_OUTPUT_DIR) -
             norm = ds.add(path, xml)
             diagram_paths.append(norm)
         except (DiagramSpecError, ValueError) as exc:
-            warnings.append(f"Schéma ignoré ({path}): {exc}")
+            name = path.rsplit("/", 1)[-1] or path
+            warnings.append(
+                f"Diagramme `{name}` non généré (spécification incomplète : {exc})."
+            )
 
     docs = render_default_docs(analysis, diagrams=diagram_paths)
     for rel, content in docs.items():

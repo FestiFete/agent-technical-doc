@@ -49,6 +49,12 @@ Une **analyse structurée** couvrant :
   - `diagrams/sequence-main-flows.drawio` — Séquence du/des flux principaux
   - `diagrams/data-model-er.drawio` — ER, **uniquement si** un modèle de données
     est détecté (sinon, ne le produis pas et signale-le dans `missing`).
+
+  **Règle stricte pour tout schéma** : il DOIT contenir au moins un nœud. Sinon,
+  ne le produis pas et indique-le dans `missing` (ne renvoie jamais un schéma aux
+  nœuds vides). Pour la **séquence** : participants = nœuds, messages ordonnés =
+  liens (préfixés `1.`, `2.`, …). Pour l'**ER** : entités = nœuds (avec attributs),
+  relations = liens.
 - **`summary`** : 2–4 phrases de synthèse (servira de commentaire de PR).
 - **`missing`** : ce qui n'a pas pu être déterminé depuis le dépôt.
 
