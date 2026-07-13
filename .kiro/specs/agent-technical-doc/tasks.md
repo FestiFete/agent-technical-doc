@@ -139,6 +139,9 @@ d'implémentation » de `requirements.md`).
   Guardé par `tests/test_local_run.py`. _Nécessite creds AWS Bedrock + GitHub pour
   une exécution réelle (non jouée en CI hors ligne)._
 - [ ] **Phase 2 — Déploiement sandbox + smoke manuel** (PR → `@mention` → doc).
+  Runbook + helper `e2e/smoke_check.py` (vérifie doc `docs/agent/` + commentaire
+  terminal, verdict PASS/FAIL/TIMEOUT) livrés ; **exécution du déploiement à faire
+  côté sandbox** (droits AWS + GitHub App/webhook requis).
 - [ ] **Phase 3 — Harnais E2E automatisé** : événement synthétique signé HMAC →
   chaîne AWS complète ; fixtures PR/branche, polling async, assertions structurelles,
   teardown (idempotence + quota).

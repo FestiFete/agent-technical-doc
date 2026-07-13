@@ -161,6 +161,119 @@ Les **écritures** GitHub (blob/tree/commit/ref/commentaire) sont neutralisées 
 seul `--commit` valide la restitution réelle. En dry-run, le commit renvoyé est
 factice (`DRYRUN…`) et le commentaire est journalisé, pas posté.
 
+## Phase 2 — Déploiement sandbox + smoke manuel
+
+Objectif : déployer la chaîne complète sur un compte AWS bac-à-sable, brancher une
+GitHub App + un webhook, puis déclencher un run **de bout en bout** en commentant
+sur une PR, et vérifier le résultat.
+
+> ⚠️ Ces étapes créent des ressources AWS (coût) et nécessitent des droits de
+> déploiement. À faire sur un **compte sandbox**.
+
+### 1. Pré-requis
+
+- Terraform >= 1.6, Docker (buildx ARM64), AWS CLI configuré (`AWS_PROFILE`).
+- Accès Bedrock activé (Model access : Haiku + Sonnet) dans la région.
+- Une **GitHub App** (Contents R/W, Pull requests R/W, événement *Issue comments*)
+  installée sur le dépôt de test ; App ID + clé privée PEM.
+- Un secret HMAC aléatoire pour le webhook.
+
+### 2. Déploiement (depuis `documentation/terraform/`)
+
+```bash
+# 0. Bucket de state (une fois, backend local)
+cd terraform/bootstrap
+terraform init && terraform apply -var-file=../shared.tfvars
+#   → reporter le nom du bucket dans shared.tfvars ET le backend "s3" de chaque providers.tf
+
+# 1. Activer l'agent avant le module runtime
+#   scripts/agents/agents.json : "enabled": true
+
+# 2. Modules dans l'ordre
+for m in ecr security roles runtime ingestion observability; do
+  cd ../$m && terraform init && terraform apply -var-file=../shared.tfvars
+done
+#   ingestion prend aussi -var-file=terraform.tfvars (allowlist, mention, assocs)
+```
+
+### 3. Configuration post-déploiement
+
+```bash
+# Secret GitHub App (voir README racine ; PAT accepté en repli)
+export APP_SECRET=$(python3 -c 'import json;print(json.dumps({"app_id":"123456","installation_id":"7654321","private_key":open("app.pem").read()}))')
+aws secretsmanager put-secret-value --secret-id technical-doc-POC-github-token --secret-string "$APP_SECRET"
+
+# Secret HMAC du webhook (même valeur qu'on mettra côté GitHub)
+aws secretsmanager put-secret-value --secret-id technical-doc-POC-webhook-hmac --secret-string 'un-secret-aleatoire-long'
+
+# URL du webhook
+cd terraform/ingestion && terraform output webhook_url
+```
+
+- Côté GitHub (org ou dépôt) : **Webhooks → Add** → Payload URL = sortie
+  `webhook_url`, Content type `application/json`, Secret = le même HMAC, événement
+  **Issue comments** uniquement.
+- Renseigner l'allowlist dans `terraform/ingestion/terraform.tfvars`
+  (`allowed_repositories = ["FestiFete/RogerVoiceTest"]`) puis réappliquer `ingestion`.
+
+### 4. Déclencher le smoke
+
+Sur une **PR ouverte** du dépôt autorisé, poster un commentaire :
+
+```
+@agent-technical-doc peux-tu générer la documentation technique ?
+```
+
+Attendu : réaction 👀 immédiate, puis (quelques minutes) un commit sous
+`docs/agent/` sur la branche de la PR + un commentaire récapitulatif.
+
+### 5. Vérifier automatiquement le résultat
+
+```bash
+cd scripts/agents/agent-technical-doc
+read -rs GITHUB_TOKEN && export GITHUB_TOKEN     # ou GITHUB_APP_SECRET
+python3 e2e/smoke_check.py --repo FestiFete/RogerVoiceTest --pr 1 --timeout 300
+```
+
+- `PASS` : `docs/agent/` présent sur la branche head **et** commentaire de succès.
+- `FAIL` : commentaire d'échec/fork détecté (le corps est affiché).
+- `TIMEOUT` : rien de terminal dans le délai → tracer via les logs (étape 6).
+
+### 6. Tracer un run (observabilité)
+
+Récupérer le `X-GitHub-Delivery` (onglet *Recent Deliveries* du webhook GitHub),
+puis chercher ce `correlation_id` dans les 3 groupes de logs :
+
+```bash
+aws logs filter-log-events --log-group-name /aws/lambda/technical-doc-POC-webhook  --filter-pattern '"<delivery-id>"'
+aws logs filter-log-events --log-group-name /aws/lambda/technical-doc-POC-worker   --filter-pattern '"<delivery-id>"'
+aws logs filter-log-events --log-group-name /aws/bedrock-agentcore/runtime/agent-technical-doc-POC --filter-pattern '"<delivery-id>"'
+```
+
+Dashboard : `technical-doc-POC-overview` (invocations, erreurs, SQS/DLQ, durée de
+run EMF, runs par outcome). Alarmes : DLQ non vide, erreurs webhook/worker/runtime.
+
+### 7. Teardown
+
+```bash
+# Ordre inverse du déploiement
+for m in observability ingestion runtime roles security ecr; do
+  cd terraform/$m && terraform destroy -var-file=../shared.tfvars; cd -
+done
+# bootstrap (bucket de state) : vider puis détruire si le sandbox est jetable.
+```
+
+### Dépannage rapide
+
+| Symptôme | Piste |
+|----------|-------|
+| Pas de réaction 👀 | Webhook non reçu (URL/HMAC) ou dépôt hors allowlist / auteur non autorisé |
+| 401 côté webhook | Secret HMAC GitHub ≠ `technical-doc-POC-webhook-hmac` |
+| Commentaire d'échec « fork » | PR issue d'un fork (non supporté) |
+| Échec auth GitHub | Secret App mal formé, App non installée sur le dépôt |
+| `AccessDeniedException` Bedrock | Modèle non activé dans la région / rôle runtime |
+| DLQ non vide | Inspecter le message, tracer par `correlation_id`, corriger, redrive |
+
 ### Notes
 
 - **Coût** : chaque exécution consomme des tokens Bedrock. Préférez Haiku.
