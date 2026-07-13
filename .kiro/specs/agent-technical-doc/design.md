@@ -32,9 +32,9 @@ flowchart LR
     WL --> SQS[SQS + DLQ]
     SQS --> WK["Lambda worker<br/>classif. transitoire/permanent"]
     WK -->|InvokeAgentRuntime scopé ARN| RT["AgentCore Runtime doc-agent<br/>Strands ARM64, session isolée"]
-    RT -->|GetSecretValue KMS| SM[(Secrets Manager<br/>token GitHub + secret HMAC)]
+    RT -->|GetSecretValue| SM[(Secrets Manager<br/>GitHub App/PAT + secret HMAC)]
     RT -->|clone shallow ref, lecture bornée| PR
-    RT -->|InvokeModel| BR[Bedrock Claude]
+    RT -->|InvokeModel| BR[Bedrock Claude<br/>Haiku défaut / escalade Sonnet]
     RT -->|"1 commit docs/agent/** + commentaire terminal"| PR
     RT -.EMF/OTEL + correlation_id.-> CW[CloudWatch<br/>métriques / alarmes / dashboard]
     WL -.EMF.-> CW
@@ -69,7 +69,7 @@ flowchart LR
 | SQS + DLQ | AWS SQS | Découplage, lissage, retry, isolation des échecs |
 | Lambda worker | Python 3.12 | Consomme SQS → `InvokeAgentRuntime` |
 | AgentCore Runtime | Strands / Python 3.11 ARM64 | Clone, analyse, génération, commit, commentaire |
-| Secrets Manager | AWS | Token GitHub (PAT) + secret HMAC webhook |
+| Secrets Manager | AWS | Auth GitHub App (app_id + private_key) ou PAT + secret HMAC webhook |
 | DynamoDB | AWS (on-demand, TTL) | Table d'idempotence `repo#pr#sha` |
 | CloudWatch | AWS | Logs, métriques EMF, alarmes, dashboard |
 
@@ -83,7 +83,8 @@ flowchart LR
   vient de l'absence de tool d'exécution.
 - **Aucun egress arbitraire** : seuls l'API GitHub (host `api.github.com` +
   clone `github.com`) et Bedrock sont joignables fonctionnellement.
-- **Secrets** : chiffrés via KMS CMK, jamais journalisés (masquage systématique).
+- **Secrets** : chiffrés au repos (POC : clés gérées AWS `aws/secretsmanager` ;
+  CMK à rétablir avant prod), jamais journalisés (masquage systématique).
 - **Webhook** : HTTPS + HMAC obligatoire ; rejet si signature absente/invalide.
 - **Autorisation du déclencheur** : allowlist de dépôts + `author_association`.
 - **Forks refusés** : le head sur fork est du contenu non maîtrisé et non
@@ -130,7 +131,7 @@ documentation/
 ├── specs/                     # requirements, design, tasks, plan
 ├── scripts/
 │   ├── agents/agent-technical-doc/
-│   │   ├── agent.py           # entrypoint BedrockAgentCoreApp
+│   │   ├── agent.py           # entrypoint BedrockAgentCoreApp (async)
 │   │   ├── instructions.md    # prompt système (durci)
 │   │   ├── Dockerfile         # ARM64
 │   │   ├── requirements.txt
@@ -138,13 +139,21 @@ documentation/
 │   │   │   ├── __init__.py
 │   │   │   ├── config.py
 │   │   │   ├── correlation.py
+│   │   │   ├── payload.py
+│   │   │   ├── secrets.py
+│   │   │   ├── github_auth.py    # auth GitHub App (JWT) / PAT
 │   │   │   ├── github_client.py
 │   │   │   ├── repo_reader.py
 │   │   │   ├── selection.py
+│   │   │   ├── analyzer.py       # analyse LLM (Bedrock) + sélection de modèle
 │   │   │   ├── drawio.py
 │   │   │   ├── doc_builder.py
-│   │   │   └── secrets.py
-│   │   ├── tools.py           # tools Strands (@tool) branchés sur docagent/
+│   │   │   ├── committer.py
+│   │   │   ├── comments.py
+│   │   │   ├── idempotency.py
+│   │   │   ├── metrics.py
+│   │   │   ├── paths.py
+│   │   │   └── orchestrator.py   # run bout-en-bout (dépendances injectées)
 │   │   └── tests/             # tests unitaires (stdlib + pytest, sans réseau)
 │   └── lambdas/
 │       ├── webhook-receiver/  # handler.py + requirements.txt + tests
@@ -164,10 +173,11 @@ différé, afin d'être unit-testables sans ces dépendances.
 
 ### Security (pilier prioritaire)
 - Endpoint public **authentifié par HMAC** ; rejet des payloads non signés.
-- Token GitHub à portée minimale, en Secrets Manager chiffré KMS, jamais loggé.
+- Auth **GitHub App** (token d'installation court ~1 h, permissions fines ;
+  repli PAT), en Secrets Manager (clés gérées AWS en POC, CMK avant prod), jamais loggé.
 - Contenu du dépôt = donnée non fiable ; aucun tool d'exécution ; anti
   prompt-injection au niveau code + prompt.
-- Garde-fous de cible de commit **codés en dur** dans le tool (pas de dérivation
+- Garde-fous de cible de commit **codés en dur** dans le code (pas de dérivation
   depuis le contenu lu).
 - Autorisation du déclencheur (allowlist + `author_association`) ; forks refusés.
 - Moindre privilège strict par composant ; worker scopé à l'ARN du runtime.
@@ -186,24 +196,29 @@ différé, afin d'être unit-testables sans ces dépendances.
 - Runbook (DLQ/rejeu, rotation token, allowlist) + dashboard.
 
 ### Performance Efficiency
-- ARM64/Graviton, streaming Bedrock, Claude Sonnet par défaut (configurable).
-- Bornage du contexte : sélection heuristique + résumé hiérarchique + plafonds.
-- Lectures de fichiers parallélisables ; Lambdas right-sizées.
+- ARM64/Graviton, streaming Bedrock, **invocation asynchrone** (worker non bloquant,
+  pas de plafond 15 min synchrone).
+- Modèle **Claude Haiku par défaut, escalade Sonnet** pour les dépôts volumineux.
+- Bornage du contexte : sélection heuristique par score + troncature + plafonds.
+- Lambdas right-sizées. (Lectures de fichiers séquentielles — parallélisation possible.)
 
 ### Cost Optimization
-- Tokens = coût dominant → caps + sélection + résumé ; **pas de KB** (pas d'OCU).
+- Tokens = coût dominant → caps resserrés + sélection + Haiku par défaut ;
+  **pas de KB** (pas d'OCU).
 - Tout serverless scale-to-zero ; DynamoDB on-demand + TTL ; rétention logs bornée
-  + échantillonnage traces ; tags de répartition de coûts.
+  (14 j) ; tags de répartition de coûts.
 
 ### Sustainability
 - Graviton, scale-to-zero, lectures bornées, rétention limitée → empreinte réduite.
 
-## 7. Points techniques à confirmer (spike Task 1)
+## 7. Points techniques (tranchés)
 
-- Mode d'invocation AgentCore : asynchrone natif vs streaming synchrone borné
-  (conditionne si le worker attend la fin ou fait fire-and-forget).
-- Durée max de session runtime (`max_lifetime_in_seconds`) et alignement avec le
-  visibility timeout SQS.
-- Limite de taille du payload `InvokeAgentRuntime` (on ne transmet que des
-  métadonnées : repo, PR, sha, correlation_id — a priori sans risque).
-- Egress sortant en `network_mode = PUBLIC` (clone + API GitHub).
+- **Invocation AgentCore : asynchrone natif** (implémenté). L'entrypoint lance le
+  run en tâche de fond (`add_async_task`/`HealthyBusy`) et rend la main
+  immédiatement ; le worker ne bloque plus (timeout court). La session survit via
+  le statut `/ping` jusqu'à `max_lifetime_in_seconds` (POC : 3600 s ; max AgentCore
+  8 h). L'agent reste responsable de la restitution ; idempotence `repo#pr#sha`
+  (relâchée en cas d'échec pour autoriser un re-run).
+- Payload `InvokeAgentRuntime` : métadonnées uniquement (repo, PR, comment_id,
+  correlation_id) — pas de contenu de dépôt.
+- Egress sortant en `network_mode = PUBLIC` (clone + API GitHub + Bedrock).

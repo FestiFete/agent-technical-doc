@@ -5,3 +5,6 @@ scripts/agents/agent-competency-agentic/__pycache__/
 scripts/agents/agent-competency-word-transformation/__pycache__
 scripts/lambdas/lambda-excel-ingest/__pycache__/
 terraform-config/agentcore/knowledge-bases/__pycache__/
+
+# OS
+.DS_Store

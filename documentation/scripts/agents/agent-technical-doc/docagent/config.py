@@ -77,7 +77,6 @@ GITHUB_TOKEN_SECRET_ARN = os.environ.get("GITHUB_TOKEN_SECRET_ARN", "")
 
 # API GitHub (permet de cibler GitHub Enterprise plus tard sans changer le code).
 GITHUB_API_BASE = os.environ.get("GITHUB_API_BASE", "https://api.github.com").rstrip("/")
-GITHUB_SERVER = os.environ.get("GITHUB_SERVER", "github.com")
 
 # Bedrock
 BEDROCK_REGION = os.environ.get("BEDROCK_REGION", os.environ.get("AWS_REGION", "eu-central-1"))

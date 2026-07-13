@@ -19,7 +19,6 @@ database, entity, actor, default. ``attributes`` n'est utilisé que pour ``er``.
 """
 from __future__ import annotations
 
-import html
 import xml.etree.ElementTree as ET
 from xml.etree.ElementTree import Element, SubElement
 
@@ -154,17 +153,3 @@ def validate_drawio_xml(xml: str) -> bool:
     if rootel.tag != "mxfile":
         return False
     return rootel.find(".//mxGraphModel/root") is not None
-
-
-# Utilisé par le prompt/tool : liste des diagrammes attendus et leur type.
-STANDARD_DIAGRAMS = {
-    "diagrams/c4-context.drawio": "c4",
-    "diagrams/c4-container.drawio": "c4",
-    "diagrams/c4-component.drawio": "c4",
-    "diagrams/sequence-main-flows.drawio": "sequence",
-    "diagrams/data-model-er.drawio": "er",
-}
-
-
-def _escape(text: str) -> str:  # pragma: no cover - utilitaire
-    return html.escape(text, quote=True)

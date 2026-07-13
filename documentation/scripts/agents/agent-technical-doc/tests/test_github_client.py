@@ -71,21 +71,27 @@ def test_github_error_flags_transient():
 
 
 # --- secrets -----------------------------------------------------------------
-def test_extract_token_plain():
-    assert secrets._extract_token("ghp_plain", "token") == "ghp_plain"
+def test_parse_secret_plain_pat():
+    assert secrets._parse_secret_string("ghp_plain") == {"token": "ghp_plain"}
 
 
-def test_extract_token_json():
+def test_parse_secret_json_pat():
     raw = json.dumps({"token": "ghp_fromjson"})
-    assert secrets._extract_token(raw, "token") == "ghp_fromjson"
+    assert secrets._parse_secret_string(raw) == {"token": "ghp_fromjson"}
 
 
-def test_extract_token_json_custom_key():
-    raw = json.dumps({"github_token": "ghp_x"})
-    assert secrets._extract_token(raw, "nonexistent") == "ghp_x"
+def test_parse_secret_json_app():
+    raw = json.dumps({"app_id": "1", "private_key": "PEM", "installation_id": 7})
+    assert secrets._parse_secret_string(raw) == {"app_id": "1", "private_key": "PEM",
+                                                 "installation_id": 7}
 
 
-def test_get_github_token_requires_arn():
+def test_parse_secret_empty_raises():
+    with pytest.raises(ValueError):
+        secrets._parse_secret_string("   ")
+
+
+def test_get_secret_dict_requires_arn():
     secrets._reset_cache_for_tests()
     with pytest.raises(ValueError):
-        secrets.get_github_token("", region="eu-central-1")
+        secrets.get_secret_dict("", region="eu-central-1")

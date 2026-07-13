@@ -52,24 +52,6 @@ def claim(key: str, correlation_id: str, *, ttl_days: int = 30) -> bool:
         raise
 
 
-def mark_status(key: str, status: str) -> None:
-    """Met à jour le statut (best-effort, ne lève jamais)."""
-    table = _table_name()
-    if not table:
-        return
-    try:
-        import boto3
-        boto3.client("dynamodb", region_name=config.BEDROCK_REGION).update_item(
-            TableName=table,
-            Key={"pk": {"S": key}},
-            UpdateExpression="SET #s = :s",
-            ExpressionAttributeNames={"#s": "status"},
-            ExpressionAttributeValues={":s": {"S": status}},
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("mark_status échec (%s): %s", key, exc)
-
-
 def release(key: str) -> None:
     """Supprime la revendication d'idempotence (best-effort, ne lève jamais).
 

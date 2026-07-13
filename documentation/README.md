@@ -34,7 +34,7 @@ documentation/
     ├── shared.tfvars
     ├── bootstrap/     # bucket S3 du state
     ├── ecr/           # repository d'images
-    ├── security/      # KMS CMK + secrets (token GitHub, HMAC) + DynamoDB idempotence
+    ├── security/      # secrets (GitHub App/PAT, HMAC) + DynamoDB idempotence
     ├── roles/         # rôle d'exécution runtime (moindre privilège)
     ├── runtime/       # build/push ARM64 + runtime AgentCore + logs
     ├── ingestion/     # API Gateway + Lambdas + SQS/DLQ
