@@ -50,6 +50,18 @@ def test_dryrun_stubs_writes_without_touching_real():
     assert real.reads == []
 
 
+def test_captured_files_reconstruction():
+    c = local_run.DryRunClient(_RealSpy())
+    b1 = c.create_blob("r", "contenu-A")["sha"]
+    b2 = c.create_blob("r", "contenu-B")["sha"]
+    c.create_tree("r", "base", [
+        {"path": "docs/agent/a.md", "sha": b1},
+        {"path": "docs/agent/b.md", "sha": b2},
+    ])
+    files = c.captured_files()
+    assert files == {"docs/agent/a.md": "contenu-A", "docs/agent/b.md": "contenu-B"}
+
+
 def test_resolve_token_pat(monkeypatch):
     monkeypatch.delenv("GITHUB_APP_SECRET", raising=False)
     monkeypatch.setenv("GITHUB_TOKEN", "ghp_local")

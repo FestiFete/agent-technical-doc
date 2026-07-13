@@ -66,6 +66,8 @@ class DryRunClient:
     def __init__(self, real):
         self._real = real
         self._blob = 0
+        self._blobs = {}   # sha factice -> contenu
+        self._paths = {}    # chemin -> sha factice
 
     # Lectures → vrai client (exercent RS256, tarball 302, API PR).
     def get_pull_request(self, *a, **k):
@@ -87,11 +89,20 @@ class DryRunClient:
 
     def create_blob(self, repo, content, encoding="utf-8"):
         self._blob += 1
-        return {"sha": f"dryrun-blob-{self._blob}"}
+        sha = f"dryrun-blob-{self._blob}"
+        self._blobs[sha] = content
+        return {"sha": sha}
 
     def create_tree(self, repo, base_tree, tree):
         logger.info("[dry-run] create_tree: %d entrées", len(tree))
+        for entry in tree:
+            if entry.get("path") and entry.get("sha"):
+                self._paths[entry["path"]] = entry["sha"]
         return {"sha": "dryrun-tree"}
+
+    def captured_files(self):
+        """Reconstitue {chemin: contenu} des fichiers qui auraient été commités."""
+        return {path: self._blobs.get(sha, "") for path, sha in sorted(self._paths.items())}
 
     def create_commit(self, repo, message, tree_sha, parent_sha):
         logger.info("[dry-run] create_commit: %r (parent=%s)", message, parent_sha[:12])
@@ -121,14 +132,17 @@ def _resolve_local_token(repo_full_name: str) -> str:
     )
 
 
-def _build_deps(*, dry_run: bool) -> OrchestratorDeps:
+def _build_deps(*, dry_run: bool, client_sink=None) -> OrchestratorDeps:
     def _get_token(repo_full_name: str) -> str:
         return _resolve_local_token(repo_full_name)
 
     def _make_client(token: str):
         from docagent.github_client import GitHubClient
         real = GitHubClient(token, api_base=config.GITHUB_API_BASE)
-        return DryRunClient(real) if dry_run else real
+        client = DryRunClient(real) if dry_run else real
+        if client_sink is not None:
+            client_sink.append(client)
+        return client
 
     def _fetch_repo(client, repo_full_name: str, ref: str, workdir: str):
         from docagent.repo_reader import RepoReader, extract_tarball_safely
@@ -159,6 +173,8 @@ def main(argv=None) -> int:
                         help="Écrit réellement (commit + commentaire). Défaut : dry-run.")
     parser.add_argument("--model", help="Override MODEL_ID (ex. profil Haiku)")
     parser.add_argument("--region", help="Override BEDROCK_REGION")
+    parser.add_argument("--out", help="Répertoire où écrire localement les fichiers "
+                        "générés (dry-run) pour inspection — aucune écriture GitHub")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
 
@@ -183,13 +199,25 @@ def main(argv=None) -> int:
         {"repo_full_name": args.repo, "pr_number": args.pr, "correlation_id": correlation_id},
         None,
     )
-    deps = _build_deps(dry_run=dry_run)
+    client_sink = []
+    deps = _build_deps(dry_run=dry_run, client_sink=client_sink)
 
     resp = run_documentation(request, session_id=correlation_id, deps=deps)
     result = resp.get("result", {})
 
     print("\n===== RÉSULTAT =====")
     print(json.dumps(result, ensure_ascii=False, indent=2))
+
+    # Dump local des fichiers générés (dry-run) pour inspection.
+    if dry_run and args.out and client_sink and hasattr(client_sink[0], "captured_files"):
+        files = client_sink[0].captured_files()
+        for path, content in files.items():
+            dest = os.path.join(args.out, path)
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            with open(dest, "w", encoding="utf-8") as fh:
+                fh.write(content)
+        print(f"\n{len(files)} fichiers écrits sous {args.out}/ (aperçu local, non commités)")
+
     status = result.get("status")
     if status in ("complete",):
         print(f"\nOK ({mode}). Fichiers : {len(result.get('files', []))}")
