@@ -21,8 +21,9 @@ de l'exécution.
   - Demo : clone + lecture d'un ensemble borné de fichiers.
 
 - [x] **Task 3 — Sélection heuristique + analyse + anti prompt-injection**
-  - `instructions.md` complet (heuristique, résumé hiérarchique, analyse
-    structurée). Contenu lu = donnée, jamais instruction.
+  - `instructions.md` complet (heuristique, analyse structurée). Contenu lu =
+    donnée, jamais instruction. _NB : le **résumé hiérarchique** initialement prévu
+    n'est pas implémenté ; à ce jour sélection par score + troncature + plafonds._
   - Tests : stack/framework identifiés depuis le manifeste ; **cas
     prompt-injection** neutralisé (un fichier hostile ne modifie ni la cible ni le
     comportement).
@@ -58,6 +59,8 @@ de l'exécution.
 - [x] **Task 8 — Terraform : rôle IAM strict + KMS + build/push + runtime**
   - Rôle runtime scopé (`bedrock`, `secretsmanager` scopé, `dynamodb` scopé, logs) ;
     KMS CMK ; agents.json `enabled` ; injection env. `terraform validate`.
+    _NB : les **CMK KMS** ont été retirées en POC (DENY `kms:CreateKey`) → clés
+    gérées AWS ; à rétablir avant prod._
   - Demo : runtime déployé ; `InvokeAgentRuntime` manuel documente un dépôt de test.
 
 - [x] **Task 9 — Terraform : ingestion webhook→API GW→SQS→worker**
@@ -86,3 +89,41 @@ de l'exécution.
   - README agent (fonctionnement, ordre de déploiement, config, variables d'env),
     notes de sécurité, runbook exploitation, évolution GitHub App.
   - Demo : un nouvel ingénieur déploie l'ensemble en suivant le guide.
+
+## Compléments post-POC (livrés)
+
+Améliorations réalisées au-delà du plan initial (voir aussi la section « État
+d'implémentation » de `requirements.md`).
+
+- [x] **Sélection de modèle à deux niveaux** — Haiku par défaut, escalade Sonnet
+  pour les dépôts volumineux/complexes (`analyzer.select_model`). Tests unitaires.
+- [x] **Bornage du contexte resserré** — plafonds abaissés (≈1,2 Mo, 40 fichiers,
+  80 Ko/fichier) sous la fenêtre de contexte (coût + fiabilité).
+- [x] **Invocation asynchrone** — entrypoint non bloquant
+  (`add_async_task`/`complete_async_task`), worker « fire-and-forget » (timeout court).
+- [x] **Résilience du run** — idempotence relâchée en cas d'échec ; retries backoff
+  sur erreurs transitoires (Bedrock, lectures GitHub GET) ; écritures non rejouées.
+  Module `retry.py` + tests.
+- [x] **Authentification GitHub App** — token d'installation (~1 h) via JWT RS256,
+  repli PAT. Module `github_auth.py` + tests.
+- [x] **Garde-fou anti-DoS** — quota de runs par dépôt et par fenêtre (webhook) +
+  IAM `UpdateItem`. Tests.
+- [x] **Observabilité** — dashboard recâblé sur la durée de run EMF (moy./p90/échecs).
+- [x] **Rétention logs** — 30 → 14 jours.
+- [x] **Nettoyage & doc** — dead code retiré, docs (README/design/requirements)
+  alignées sur le code.
+
+## Chantiers structurants restants (hors code applicatif)
+
+- [ ] **CMK KMS** — rétablir le chiffrement par clés gérées client (secrets, SQS,
+  DynamoDB, logs) + rotation (nécessite droits `kms:CreateKey`).
+- [ ] **WAF** — associer un AWS WAF (rate-based + règles managées) à l'API Gateway.
+- [ ] **CI/CD** — pipeline de build/test/déploiement ; **paramétrer le backend S3**
+  (retirer le bucket de state codé en dur dans chaque `providers.tf`).
+- [ ] **DR / multi-région** — stratégie de reprise selon la cible de disponibilité.
+- [ ] _(code, optionnel)_ **Résumé hiérarchique** des gros dépôts (réduction tokens
+  vs escalade Sonnet).
+- [ ] _(code, optionnel)_ **Parallélisation des lectures** de fichiers + **streaming
+  du tarball** (lève le plafond mémoire sur très gros dépôts).
+- [ ] _(code, optionnel)_ Tests de l'**entrypoint async** (`agent.py`) et de la
+  **signature RS256 réelle** (avec `cryptography`).

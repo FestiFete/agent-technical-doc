@@ -7,15 +7,14 @@ fonctionnel) et commite une documentation versionnée (Markdown + schémas
 `.drawio` : C4 Context/Container/Component, Séquence, ER) sur la branche de la PR,
 puis poste un commentaire récapitulatif.
 
-Ce répertoire est **autonome** : il contient les specs, le code de l'agent, les
-Lambdas d'ingestion et le Terraform. Il peut être extrait tel quel vers un dépôt
-dédié.
+Ce répertoire regroupe le code de l'agent, les Lambdas d'ingestion et le
+Terraform. Il peut être extrait tel quel vers un dépôt dédié. Les specs
+(requirements, design, tasks) vivent dans `.kiro/specs/agent-technical-doc/`.
 
 ## Arborescence
 
 ```
 documentation/
-├── specs/                     # requirements, design (Well-Architected), tasks, plan
 ├── scripts/
 │   ├── agents/
 │   │   ├── agents.json        # source de vérité (discovery + env)
@@ -46,17 +45,18 @@ documentation/
 ```
 Commentaire PR @agent
   → API Gateway (HTTPS)
-  → Lambda webhook (HMAC + mention + allowlist + author_association + dedup + ack 👀)
+  → Lambda webhook (HMAC + mention + allowlist + author_association + dedup + quota anti-DoS + ack 👀)
   → SQS (+ DLQ)
-  → Lambda worker (InvokeAgentRuntime, scopé à l'ARN)
-  → AgentCore Runtime (session isolée) :
-       Secrets Manager → token GitHub
-       clone shallow (lecture seule) → sélection bornée → analyse LLM (Bedrock)
+  → Lambda worker (InvokeAgentRuntime scopé à l'ARN ; invocation asynchrone → se libère en ~1 s)
+  → AgentCore Runtime (session isolée, tâche de fond) :
+       Secrets Manager → auth GitHub App (token d'installation ~1 h) / repli PAT
+       résolution PR + refus des forks → idempotence repo#pr#sha
+       clone shallow (lecture seule) → sélection bornée → analyse LLM (Haiku, escalade Sonnet ; retries sur transitoire)
        → rendu Markdown + .drawio → commit unique docs/agent/** → commentaire terminal
 ```
 
-Détails dans `specs/design.md` (diagramme, invariants de sécurité, analyse
-Well-Architected par pilier).
+Détails dans `.kiro/specs/agent-technical-doc/design.md` (diagramme, invariants de
+sécurité, analyse Well-Architected par pilier).
 
 ## Prérequis
 
@@ -148,12 +148,18 @@ cd ../../lambdas && python3 -m pytest -q
   refusés par le code (`paths.normalize_output_path`).
 - **PR de fork refusées** (contenu non maîtrisé, non poussable).
 - **Autorisation du déclencheur** : allowlist de dépôts + `author_association`.
+- **Authentification GitHub App** : token d'installation court (~1 h), permissions
+  fines (repli PAT). Signature JWT RS256 côté agent ; token régénéré par run.
 - **Moindre privilège** : rôles séparés ; worker `InvokeAgentRuntime` scopé à
   l'ARN ; runtime `GetSecretValue` scopé au secret, `dynamodb` scopé à la table.
-- **Chiffrement KMS** (secrets, SQS, DynamoDB, logs) ; token jamais journalisé
-  (masquage `correlation.mask_secrets`).
-- **Idempotence** `repo#pr#sha` (agent) + `repo#pr#comment_id` (webhook) : un seul
-  run/commit malgré rejeux et parallélisme.
+- **Chiffrement au repos** : POC = clés gérées AWS (`aws/secretsmanager`, SSE-SQS,
+  clé par défaut DynamoDB/logs). **CMK KMS à rétablir avant une prod à forts
+  enjeux.** Secrets jamais journalisés (masquage `correlation.mask_secrets`).
+- **Garde-fou anti-DoS** : quota de runs par dépôt et par fenêtre glissante (webhook).
+- **Résilience** : idempotence `repo#pr#sha` (agent) + `repo#pr#comment_id`
+  (webhook) — un seul run/commit malgré rejeux et parallélisme ; **relâchée en cas
+  d'échec** (re-run possible) ; **retries backoff** sur erreurs transitoires
+  (Bedrock, lectures GitHub), écritures non rejouées (anti-doublon).
 
 ## Runbook (exploitation)
 
@@ -169,6 +175,9 @@ cd ../../lambdas && python3 -m pytest -q
   régénéré à chaque run ; le secret App est mis en cache par session, donc les
   nouvelles sessions prennent la nouvelle valeur.
 - **Mettre à jour l'allowlist** : éditer `ingestion/terraform.tfvars` + réappliquer.
+- **Quota anti-DoS (HTTP 429)** : un dépôt qui atteint `MAX_RUNS_PER_REPO` sur la
+  fenêtre `RATE_WINDOW_SECONDS` est temporairement bloqué. Ajuster ces variables
+  (`ingestion`) puis réappliquer ; les compteurs `ratelimit#…` expirent par TTL.
 - **Faux positif fork / doublon** : vérifier le statut dans la table DynamoDB
   d'idempotence (`pk = owner/repo#pr#sha`).
 
@@ -183,3 +192,9 @@ cd ../../lambdas && python3 -m pytest -q
   fond (`add_async_task`/`HealthyBusy`) et rend la main immédiatement ; le worker
   ne bloque plus (timeout court, pas de plafond 15 min synchrone). Vérifier que
   `max_lifetime_in_seconds` du runtime couvre la durée d'un run complet.
+- **Sélection de modèle à deux niveaux** : Haiku par défaut, escalade Sonnet pour
+  les gros dépôts. Le **résumé hiérarchique** (réduction des tokens sur très gros
+  dépôts) n'est **pas encore implémenté** (sélection par score + troncature).
+- **Chiffrement CMK KMS** à rétablir avant une prod à forts enjeux (POC : clés
+  gérées AWS). Autres chantiers prod : WAF devant l'API Gateway, CI/CD + backend
+  state paramétré, DR/multi-région.

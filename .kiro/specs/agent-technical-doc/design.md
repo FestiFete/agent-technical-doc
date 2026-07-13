@@ -26,8 +26,8 @@ flowchart LR
       PR["Branche head de la PR"]
     end
     C -->|webhook issue_comment| APIGW[API Gateway HTTPS]
-    APIGW --> WL["Lambda webhook<br/>HMAC + mention + allowlist<br/>+ author_association + anti-fork + dedup"]
-    WL -->|PutItem conditionnel repo#pr#sha| DDB[(DynamoDB idempotence + TTL)]
+    APIGW --> WL["Lambda webhook<br/>HMAC + mention + allowlist<br/>+ author_association + dedup + quota anti-DoS"]
+    WL -->|"PutItem conditionnel repo#pr#comment_id + compteur quota"| DDB[(DynamoDB idempotence + TTL)]
     WL -->|ack reaction| C
     WL --> SQS[SQS + DLQ]
     SQS --> WK["Lambda worker<br/>classif. transitoire/permanent"]
@@ -46,19 +46,25 @@ flowchart LR
 1. Un collaborateur commente `@agent-technical-doc` sur une PR.
 2. GitHub envoie l'événement `issue_comment` (action `created`) à l'API Gateway.
 3. La **Lambda webhook** valide la signature HMAC, vérifie le handle mentionné,
-   l'allowlist du dépôt, l'`author_association`, rejette les forks, calcule la clé
-   d'idempotence `repo#pr#sha` et fait un `PutItem` conditionnel dans DynamoDB. Si
-   la clé est nouvelle : elle pose une réaction d'accusé (👀) et enfile un message
-   SQS. Sinon : elle ignore (doublon).
+   l'allowlist du dépôt et l'`author_association`, déduplique via un `PutItem`
+   conditionnel sur `repo#pr#comment_id` (DynamoDB), puis applique un **quota
+   anti-DoS** par dépôt et par fenêtre. Si la demande est nouvelle et sous le
+   quota : elle pose une réaction d'accusé (👀) et enfile un message SQS. Sinon :
+   elle ignore (doublon, 200) ou rejette (quota dépassé, 429). Elle **n'a pas le
+   token GitHub** : les détails de PR (sha/ref, statut fork) sont résolus plus tard.
 4. La **Lambda worker** consomme le message SQS et appelle `InvokeAgentRuntime`
-   (runtime scopé par ARN), en propageant le `correlation_id`.
-5. L'**agent** (session microVM isolée) : récupère le token GitHub depuis Secrets
-   Manager, clone la ref head en shallow, sélectionne et lit un ensemble borné de
-   fichiers, analyse (LLM), génère les `.md` et `.drawio`, commite le tout en un
-   seul commit sous `docs/agent/**`, poste un commentaire récapitulatif.
-6. En cas d'échec à toute étape : l'agent poste un **commentaire terminal d'échec**
-   explicite ; le worker classe l'erreur (transitoire → retry SQS ; permanente →
-   DLQ).
+   (runtime scopé par ARN), en propageant le `correlation_id`. L'agent répondant
+   en **asynchrone**, le worker reçoit un accusé immédiat et se libère (~1 s).
+5. L'**agent** (session microVM isolée), en **tâche de fond** : résout un token via
+   **GitHub App** (repli PAT) depuis Secrets Manager, résout les détails de PR et
+   **refuse les forks**, revendique l'idempotence forte `repo#pr#sha`, clone la ref
+   head en shallow, sélectionne et lit un ensemble borné de fichiers, analyse (LLM
+   Haiku/escalade Sonnet, **retries** sur transitoire), génère les `.md` et
+   `.drawio`, commite le tout en un seul commit sous `docs/agent/**`, poste un
+   commentaire récapitulatif.
+6. En cas d'échec : l'agent poste un **commentaire terminal d'échec** explicite et
+   **relâche l'idempotence** (re-run possible sur le même commit) ; à l'invocation,
+   le worker classe l'erreur (transitoire → retry SQS ; permanente → DLQ).
 
 ### 2.2 Composants
 
@@ -75,9 +81,10 @@ flowchart LR
 
 ## 3. Invariants de sécurité (imposés par le code + IAM, pas le prompt)
 
-- **Cible de commit figée** : le tool `commit_documentation` n'écrit que des
-  chemins sous `docs/agent/**`, sur la branche head et le dépôt/sha **injectés par
-  le worker**. Toute tentative hors périmètre est rejetée par le code du tool.
+- **Cible de commit figée** : le code de commit (`committer` + `paths`) n'écrit que
+  des chemins sous `docs/agent/**`, sur la branche head et le dépôt/sha **injectés
+  par le payload / résolus par l'agent** (jamais dérivés du contenu lu). Toute
+  tentative hors périmètre est rejetée par le code (`normalize_output_path`).
 - **Contenu = donnée non fiable** : les fichiers lus ne sont jamais exécutés ni
   interprétés comme instructions ; le prompt système le rappelle, mais la garantie
   vient de l'absence de tool d'exécution.
