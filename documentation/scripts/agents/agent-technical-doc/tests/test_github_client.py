@@ -70,6 +70,45 @@ def test_github_error_flags_transient():
     assert GitHubError(404, "x").transient is False
 
 
+class _FlakyClient(GitHubClient):
+    """Client dont ``_http`` échoue ``fail_times`` fois (transitoire) avant succès."""
+
+    def __init__(self, *, fail_status, fail_times):
+        super().__init__("t", api_base="https://api.github.com",
+                         max_retries=3, sleep=lambda _d: None)
+        self.fail_status = fail_status
+        self.fail_times = fail_times
+        self.attempts = 0
+
+    def _http(self, method, url, *, headers, body):
+        self.attempts += 1
+        if self.attempts <= self.fail_times:
+            raise GitHubError(self.fail_status, "transient")
+        return HttpResponse(200, {}, json.dumps({"ok": True}).encode())
+
+
+def test_get_retried_on_transient_then_succeeds():
+    client = _FlakyClient(fail_status=503, fail_times=2)
+    out = client.get_pull_request("acme/widget", 1)  # GET
+    assert out == {"ok": True}
+    assert client.attempts == 3  # 2 échecs transitoires + 1 succès
+
+
+def test_get_not_retried_on_permanent():
+    client = _FlakyClient(fail_status=404, fail_times=1)
+    with pytest.raises(GitHubError):
+        client.get_pull_request("acme/widget", 1)
+    assert client.attempts == 1  # 404 non transitoire → pas de rejeu
+
+
+def test_write_not_retried_even_if_transient():
+    # Les écritures (POST) ne sont jamais rejouées (risque de doublon).
+    client = _FlakyClient(fail_status=503, fail_times=1)
+    with pytest.raises(GitHubError):
+        client.post_issue_comment("acme/widget", 42, "hello")
+    assert client.attempts == 1
+
+
 # --- secrets -----------------------------------------------------------------
 def test_parse_secret_plain_pat():
     assert secrets._parse_secret_string("ghp_plain") == {"token": "ghp_plain"}

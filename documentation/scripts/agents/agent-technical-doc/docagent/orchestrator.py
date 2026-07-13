@@ -66,7 +66,15 @@ def default_deps() -> OrchestratorDeps:
 
     def _analyze(repo_context: dict) -> dict:
         from .analyzer import BedrockAnalyzer
-        return BedrockAnalyzer().analyze(repo_context)
+        from .retry import is_transient_error, retry_call
+        analyzer = BedrockAnalyzer()
+        # Retry interne sur throttling/erreurs transitoires Bedrock : l'analyse est
+        # une lecture pure (idempotente), donc sûre à rejouer.
+        return retry_call(
+            lambda: analyzer.analyze(repo_context),
+            is_transient=is_transient_error,
+            logger=logger,
+        )
 
     def _claim(key: str, correlation_id: str) -> bool:
         from .idempotency import claim

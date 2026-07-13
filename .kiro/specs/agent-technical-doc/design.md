@@ -219,6 +219,11 @@ différé, afin d'être unit-testables sans ces dépendances.
   le statut `/ping` jusqu'à `max_lifetime_in_seconds` (POC : 3600 s ; max AgentCore
   8 h). L'agent reste responsable de la restitution ; idempotence `repo#pr#sha`
   (relâchée en cas d'échec pour autoriser un re-run).
+- **Résilience du run** (async ⇒ le retry SQS ne couvre plus le run) : retries
+  internes avec backoff sur erreurs **transitoires** — throttling Bedrock (analyse)
+  et 5xx GitHub sur les **lectures** (GET). Les écritures GitHub ne sont pas
+  rejouées (risque de doublon) : en cas d'échec, l'idempotence est relâchée. À
+  l'invocation, le worker classe toujours transitoire (retry SQS) vs permanent (DLQ).
 - Payload `InvokeAgentRuntime` : métadonnées uniquement (repo, PR, comment_id,
   correlation_id) — pas de contenu de dépôt.
 - Egress sortant en `network_mode = PUBLIC` (clone + API GitHub + Bedrock).

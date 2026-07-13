@@ -13,9 +13,12 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+
+from .retry import retry_call
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +46,13 @@ class HttpResponse:
 
 
 class GitHubClient:
-    def __init__(self, token: str, *, api_base: str = "https://api.github.com"):
+    def __init__(self, token: str, *, api_base: str = "https://api.github.com",
+                 max_retries: int = 3, sleep=None):
         self._token = token
         self.api_base = api_base.rstrip("/")
+        # Retry (backoff) réservé aux lectures GET idempotentes — voir _api.
+        self._max_retries = max(1, max_retries)
+        self._sleep = sleep or time.sleep
 
     # --- transport bas niveau (remplaçable en test) --------------------------
     def _http(self, method: str, url: str, *, headers: dict, body: bytes | None) -> HttpResponse:
@@ -76,7 +83,21 @@ class GitHubClient:
         headers = self._headers(accept)
         if body is not None:
             headers["Content-Type"] = "application/json"
-        return self._http(method, url, headers=headers, body=body)
+
+        call = lambda: self._http(method, url, headers=headers, body=body)  # noqa: E731
+        # Retry (backoff) uniquement sur les lectures GET, idempotentes. Les
+        # écritures (POST/PATCH : blob/tree/commit/ref/commentaire/réaction) ne
+        # sont PAS rejouées pour éviter tout doublon ; en cas d'échec, le run
+        # échoue et l'idempotence est relâchée (re-run manuel possible).
+        if method != "GET":
+            return call()
+        return retry_call(
+            call,
+            is_transient=lambda e: isinstance(e, GitHubError) and e.transient,
+            attempts=self._max_retries,
+            sleep=self._sleep,
+            logger=logger,
+        )
 
     # --- opérations de lecture ----------------------------------------------
     def download_tarball(self, repo_full_name: str, ref: str) -> bytes:
