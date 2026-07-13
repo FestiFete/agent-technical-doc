@@ -35,7 +35,7 @@ COMMIT_MESSAGE = "docs(agent): documentation technique générée automatiquemen
 class OrchestratorDeps:
     """Collaborateurs injectables (défauts réels via :func:`default_deps`)."""
 
-    get_token: Callable[[], str]
+    get_token: Callable[[str], str]  # (repo_full_name) -> token Bearer
     make_client: Callable[[str], object]
     fetch_repo: Callable[[object, str, str, str], object]  # (client, repo, ref, workdir) -> RepoReader
     analyze: Callable[[dict], dict]
@@ -48,9 +48,11 @@ class OrchestratorDeps:
 def default_deps() -> OrchestratorDeps:
     """Construit les dépendances réelles (imports différés)."""
 
-    def _get_token() -> str:
-        from .secrets import get_github_token
-        return get_github_token(config.GITHUB_TOKEN_SECRET_ARN, region=config.BEDROCK_REGION)
+    def _get_token(repo_full_name: str) -> str:
+        from .github_auth import resolve_token
+        from .secrets import get_secret_dict
+        secret = get_secret_dict(config.GITHUB_TOKEN_SECRET_ARN, region=config.BEDROCK_REGION)
+        return resolve_token(secret, repo_full_name, api_base=config.GITHUB_API_BASE)
 
     def _make_client(token: str):
         from .github_client import GitHubClient
@@ -161,7 +163,7 @@ def _execute(
     client = None
     claimed = False
     try:
-        token = deps.get_token()
+        token = deps.get_token(request.base_repo_full_name)
         client = deps.make_client(token)
 
         # Résolution des détails de PR si le payload ne les fournit pas

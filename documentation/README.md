@@ -67,8 +67,9 @@ Well-Architected par pilier).
   (`MODEL_ID`, défaut `eu.anthropic.claude-haiku-4-5`) et modèle d'escalade
   (`MODEL_ID_ESCALATION`, défaut `eu.anthropic.claude-sonnet-4-6`) utilisé
   automatiquement pour les dépôts volumineux/complexes.
-- Un PAT GitHub de service (permissions minimales : `contents:write`,
-  `pull_requests:write`) et un secret HMAC pour le webhook.
+- Une **GitHub App** de service (permissions minimales : `contents:write`,
+  `pull_requests:write`), installée sur les dépôts autorisés, et un secret HMAC
+  pour le webhook. Un PAT reste accepté en repli (voir ci-dessous).
 
 ## Déploiement (ordre)
 
@@ -99,11 +100,16 @@ done
 
 1. **Renseigner les secrets** (valeurs non gérées par Terraform) :
    ```bash
+   # GitHub App (recommandé) : app_id + private_key PEM (+ installation_id optionnel).
+   # Le token d'installation (~1 h) est généré automatiquement par l'agent.
    aws secretsmanager put-secret-value --secret-id technical-doc-POC-github-token \
-     --secret-string '{"token":"ghp_xxx"}'
+     --secret-string '{"app_id":"123456","installation_id":"7654321","private_key":"-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"}'
+   # Repli PAT (migration) : {"token":"ghp_xxx"} est aussi accepté.
    aws secretsmanager put-secret-value --secret-id technical-doc-POC-webhook-hmac \
      --secret-string 'un-secret-aleatoire-long'
    ```
+   `installation_id` est optionnel : s'il est absent, l'agent le résout par dépôt
+   via l'API GitHub (nécessite que l'App soit installée sur le dépôt).
 2. **Configurer le webhook GitHub** (org ou dépôt) : Payload URL = sortie
    `ingestion.webhook_url`, Content type `application/json`, Secret = le même que
    `webhook-hmac`, événement **Issue comments** uniquement.
@@ -158,8 +164,10 @@ cd ../../lambdas && python3 -m pytest -q
 - **Tracer un run** : chercher le `correlation_id` (= `X-GitHub-Delivery`) dans
   les logs des 3 composants (`/aws/lambda/technical-doc-POC-webhook`,
   `-worker`, `/aws/bedrock-agentcore/runtime/agent-technical-doc-POC`).
-- **Rotation du token GitHub** : `put-secret-value` sur `*-github-token` (le cache
-  du runtime est par-session ; les nouvelles sessions prennent la nouvelle valeur).
+- **Rotation des identifiants GitHub** : `put-secret-value` sur `*-github-token`
+  (clé privée de la GitHub App, ou PAT en repli). Le token d'installation est
+  régénéré à chaque run ; le secret App est mis en cache par session, donc les
+  nouvelles sessions prennent la nouvelle valeur.
 - **Mettre à jour l'allowlist** : éditer `ingestion/terraform.tfvars` + réappliquer.
 - **Faux positif fork / doublon** : vérifier le statut dans la table DynamoDB
   d'idempotence (`pk = owner/repo#pr#sha`).
@@ -167,8 +175,8 @@ cd ../../lambdas && python3 -m pytest -q
 ## Limites POC & évolutions
 
 - GitHub uniquement (GitLab / self-hosted hors périmètre).
-- PAT de service (évolution recommandée : **GitHub App** — tokens d'installation
-  courts, permissions fines, multi-repo ; le code des tools reste compatible).
+- **GitHub App** (recommandée) : tokens d'installation courts (~1 h), permissions
+  fines, multi-repo. Repli **PAT** conservé pour la migration (secret `{"token":...}`).
 - Forks non pris en charge.
 - Schémas `.drawio` sans rendu image (source éditable versionnée).
 - Invocation **asynchrone native** AgentCore : l'agent lance le run en tâche de

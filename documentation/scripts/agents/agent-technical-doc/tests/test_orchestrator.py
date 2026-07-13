@@ -91,7 +91,7 @@ def _analysis(_ctx):
 
 def _deps(client, analyze=_analysis, claim=lambda k, c: True, release=None):
     kwargs = dict(
-        get_token=lambda: "ghp_fake",
+        get_token=lambda *_a: "ghp_fake",
         make_client=lambda token: client,
         fetch_repo=lambda c, repo, ref, wd: FakeReader(),
         analyze=analyze,

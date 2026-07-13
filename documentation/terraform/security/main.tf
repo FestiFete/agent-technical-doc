@@ -13,18 +13,23 @@ locals {
 # ============================================================================
 
 # ============================================================================
-# Secrets Manager — token GitHub (PAT) + secret HMAC du webhook.
-# Les valeurs sont posées hors Terraform (placeholders + ignore_changes).
+# Secrets Manager — authentification GitHub App (préférée) + secret HMAC webhook.
+# App : {app_id, private_key (PEM), installation_id?}. Repli PAT possible :
+# {token: "ghp_..."}. Les valeurs sont posées hors Terraform (ignore_changes).
 # ============================================================================
 resource "aws_secretsmanager_secret" "github_token" {
   name        = "${local.name}-github-token"
-  description = "PAT GitHub (contents:write + pull_requests:write) pour agent-technical-doc"
+  description = "Auth GitHub App (app_id + private_key, permissions contents:write + pull_requests:write) pour agent-technical-doc — repli PAT supporté"
   # kms_key_id retiré → clé gérée AWS aws/secretsmanager (POC, pas de CMK).
 }
 
 resource "aws_secretsmanager_secret_version" "github_token" {
-  secret_id     = aws_secretsmanager_secret.github_token.id
-  secret_string = jsonencode({ token = "REPLACE_ME" })
+  secret_id = aws_secretsmanager_secret.github_token.id
+  secret_string = jsonencode({
+    app_id          = "REPLACE_ME"
+    installation_id = "REPLACE_ME"
+    private_key     = "REPLACE_ME"
+  })
 
   lifecycle {
     ignore_changes = [secret_string] # valeur gérée hors IaC (rotation manuelle POC)
