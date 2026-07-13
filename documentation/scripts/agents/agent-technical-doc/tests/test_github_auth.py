@@ -111,3 +111,34 @@ def test_jwt_claims_shape(monkeypatch):
     assert captured["payload"]["iss"] == "APPID"
     assert captured["payload"]["iat"] == 1_000_000 - 60
     assert captured["payload"]["exp"] == 1_000_000 + github_auth._JWT_TTL_SECONDS
+
+
+def test_build_app_jwt_real_rs256_roundtrip():
+    """Signature RS256 réelle : génère une paire de clés, signe, puis vérifie.
+
+    Skippé si PyJWT/cryptography ne sont pas installés (env de test minimal).
+    """
+    jwt = pytest.importorskip("jwt")
+    pytest.importorskip("cryptography")
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    private_pem = key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode()
+    public_pem = key.public_key().public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    ).decode()
+
+    token = github_auth._build_app_jwt("APP123", private_pem, now=1_000_000)
+    # Décodage avec la clé publique : valide la signature RS256 (exp désactivé,
+    # 'now' figé dans le passé pour un test déterministe).
+    decoded = jwt.decode(token, public_pem, algorithms=["RS256"],
+                         options={"verify_exp": False})
+    assert decoded["iss"] == "APP123"
+    assert decoded["iat"] == 1_000_000 - 60
+    assert decoded["exp"] == 1_000_000 + github_auth._JWT_TTL_SECONDS

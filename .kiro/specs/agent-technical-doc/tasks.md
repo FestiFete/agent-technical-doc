@@ -125,5 +125,6 @@ d'implémentation » de `requirements.md`).
   vs escalade Sonnet).
 - [ ] _(code, optionnel)_ **Parallélisation des lectures** de fichiers + **streaming
   du tarball** (lève le plafond mémoire sur très gros dépôts).
-- [ ] _(code, optionnel)_ Tests de l'**entrypoint async** (`agent.py`) et de la
-  **signature RS256 réelle** (avec `cryptography`).
+- [x] _(code)_ Tests de l'**entrypoint async** (`agent.py`, faux SDK injecté) et de
+  la **signature RS256 réelle** (skip si `cryptography`/PyJWT absents ; validée en
+  venv). Extraction tarball déjà couverte par `test_repo_reader.py`.
