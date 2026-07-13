@@ -6,48 +6,11 @@ locals {
 }
 
 # ============================================================================
-# KMS CMK — chiffre les secrets, la file SQS, la table DynamoDB et les logs.
+# CMK KMS retirée : le rôle NewSysOps a un DENY explicite sur kms:CreateKey.
+# Contournement POC → chiffrement au repos via clés gérées par AWS
+# (aws/secretsmanager pour les secrets, clé AWS par défaut pour DynamoDB,
+# SSE-SQS pour les files). À rétablir en CMK avant prod (droits KMS requis).
 # ============================================================================
-resource "aws_kms_key" "main" {
-  description             = "CMK agent-technical-doc (${var.environment})"
-  deletion_window_in_days = 7
-  enable_key_rotation     = true
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid       = "EnableRootAccount"
-        Effect    = "Allow"
-        Principal = { AWS = "arn:aws:iam::${local.account_id}:root" }
-        Action    = "kms:*"
-        Resource  = "*"
-      },
-      {
-        Sid       = "AllowCloudWatchLogs"
-        Effect    = "Allow"
-        Principal = { Service = "logs.${var.aws_region}.amazonaws.com" }
-        Action = [
-          "kms:Encrypt", "kms:Decrypt", "kms:ReEncrypt*",
-          "kms:GenerateDataKey*", "kms:DescribeKey"
-        ]
-        Resource = "*"
-        Condition = {
-          ArnLike = {
-            "kms:EncryptionContext:aws:logs:arn" = "arn:aws:logs:${var.aws_region}:${local.account_id}:log-group:*"
-          }
-        }
-      }
-    ]
-  })
-
-  tags = { Name = "${local.name}-cmk" }
-}
-
-resource "aws_kms_alias" "main" {
-  name          = "alias/${local.name}"
-  target_key_id = aws_kms_key.main.key_id
-}
 
 # ============================================================================
 # Secrets Manager — token GitHub (PAT) + secret HMAC du webhook.
@@ -56,7 +19,7 @@ resource "aws_kms_alias" "main" {
 resource "aws_secretsmanager_secret" "github_token" {
   name        = "${local.name}-github-token"
   description = "PAT GitHub (contents:write + pull_requests:write) pour agent-technical-doc"
-  kms_key_id  = aws_kms_key.main.arn
+  # kms_key_id retiré → clé gérée AWS aws/secretsmanager (POC, pas de CMK).
 }
 
 resource "aws_secretsmanager_secret_version" "github_token" {
@@ -71,7 +34,7 @@ resource "aws_secretsmanager_secret_version" "github_token" {
 resource "aws_secretsmanager_secret" "webhook_hmac" {
   name        = "${local.name}-webhook-hmac"
   description = "Secret HMAC de validation des webhooks GitHub (X-Hub-Signature-256)"
-  kms_key_id  = aws_kms_key.main.arn
+  # kms_key_id retiré → clé gérée AWS aws/secretsmanager (POC, pas de CMK).
 }
 
 resource "aws_secretsmanager_secret_version" "webhook_hmac" {
@@ -101,24 +64,16 @@ resource "aws_dynamodb_table" "idempotency" {
     enabled        = true
   }
 
-  server_side_encryption {
-    enabled     = true
-    kms_key_arn = aws_kms_key.main.arn
-  }
+  # server_side_encryption CMK retiré → chiffrement par défaut (clé AWS-owned).
 
   point_in_time_recovery {
     enabled = true
   }
 
-  tags = { Name = "${local.name}-idempotency" }
+  # tags retirés (cohérence avec le contournement KMS ; évite tout appel TagResource).
 }
 
 # ─── Outputs ─────────────────────────────────────────────────────────────────
-output "kms_key_arn" {
-  value       = aws_kms_key.main.arn
-  description = "ARN de la CMK partagée"
-}
-
 output "github_token_secret_arn" {
   value       = aws_secretsmanager_secret.github_token.arn
   description = "ARN du secret contenant le token GitHub"

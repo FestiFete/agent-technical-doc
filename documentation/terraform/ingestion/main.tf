@@ -1,16 +1,17 @@
 # ============================================================================
-# SQS : file principale + DLQ (chiffrées KMS). Découple le webhook du worker,
-# lisse la charge et isole les échecs.
+# SQS : file principale + DLQ (chiffrées via SSE-SQS, clé gérée par SQS).
+# CMK retirée (DENY kms:CreateKey sur le rôle) → SSE-SQS pour le POC.
+# Découple le webhook du worker, lisse la charge et isole les échecs.
 # ============================================================================
 resource "aws_sqs_queue" "dlq" {
   name                      = "${local.name}-dlq"
-  kms_master_key_id         = local.kms_key_arn
+  sqs_managed_sse_enabled   = true
   message_retention_seconds = 1209600 # 14 jours
 }
 
 resource "aws_sqs_queue" "main" {
-  name              = "${local.name}-queue"
-  kms_master_key_id = local.kms_key_arn
+  name                    = "${local.name}-queue"
+  sqs_managed_sse_enabled = true
   # Visibility >= timeout worker (évite qu'un message soit rejoué pendant le run).
   visibility_timeout_seconds = var.worker_timeout_seconds + 60
   message_retention_seconds  = 345600 # 4 jours
@@ -83,13 +84,8 @@ resource "aws_iam_role_policy" "webhook" {
         Effect   = "Allow"
         Action   = ["sqs:SendMessage"]
         Resource = aws_sqs_queue.main.arn
-      },
-      {
-        Sid      = "UseCmk"
-        Effect   = "Allow"
-        Action   = ["kms:Decrypt", "kms:GenerateDataKey"]
-        Resource = local.kms_key_arn
       }
+      # Statement KMS retiré : SSE-SQS + secrets aws/secretsmanager (POC sans CMK).
     ]
   })
 }
@@ -130,13 +126,8 @@ resource "aws_iam_role_policy" "worker" {
           local.runtime_arn,
           "${local.runtime_arn}/runtime-endpoint/*"
         ]
-      },
-      {
-        Sid      = "UseCmk"
-        Effect   = "Allow"
-        Action   = ["kms:Decrypt"]
-        Resource = local.kms_key_arn
       }
+      # Statement KMS retiré : SSE-SQS (POC sans CMK).
     ]
   })
 }

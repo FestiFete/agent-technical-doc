@@ -73,13 +73,9 @@ resource "aws_iam_role_policy" "runtime_execution" {
         Effect   = "Allow"
         Action   = ["dynamodb:GetItem", "dynamodb:UpdateItem"]
         Resource = local.idempotency_table_arn
-      },
-      {
-        Sid      = "KmsForSecretAndTable"
-        Effect   = "Allow"
-        Action   = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
-        Resource = local.kms_key_arn
       }
+      # Statement KMS retiré : secrets aws/secretsmanager + DynamoDB clé AWS par
+      # défaut (POC sans CMK — DENY kms:CreateKey sur le rôle NewSysOps).
     ]
   })
 }

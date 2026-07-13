@@ -25,5 +25,4 @@ locals {
 
   github_token_secret_arn = data.terraform_remote_state.security.outputs.github_token_secret_arn
   idempotency_table_arn   = data.terraform_remote_state.security.outputs.idempotency_table_arn
-  kms_key_arn             = data.terraform_remote_state.security.outputs.kms_key_arn
 }

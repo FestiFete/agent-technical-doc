@@ -22,7 +22,6 @@ locals {
   account_id = data.aws_caller_identity.current.account_id
   name       = "${var.project_name}-${var.environment}"
 
-  kms_key_arn             = data.terraform_remote_state.security.outputs.kms_key_arn
   webhook_hmac_secret_arn = data.terraform_remote_state.security.outputs.webhook_hmac_secret_arn
   idempotency_table_name  = data.terraform_remote_state.security.outputs.idempotency_table_name
   idempotency_table_arn   = data.terraform_remote_state.security.outputs.idempotency_table_arn

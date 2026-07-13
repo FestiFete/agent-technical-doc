@@ -19,11 +19,7 @@ terraform {
 provider "aws" {
   region = var.aws_region
 
-  default_tags {
-    tags = {
-      Project = var.project_name
-      Env     = var.environment
-      Module  = "security"
-    }
-  }
+  # default_tags retiré : le rôle NewSysOps n'a pas kms:TagResource, or default_tags
+  # s'applique à toutes les ressources (dont la CMK) sans possibilité d'exclusion par
+  # ressource. Contournement POC pour éviter l'appel TagResource à la création.
 }
