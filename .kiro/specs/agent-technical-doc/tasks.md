@@ -148,5 +148,9 @@ d'implémentation » de `requirements.md`).
   `tests/test_harness.py` (événement/signature acceptés par la vraie logique webhook)
   + test gated `tests/test_e2e_webhook.py` (marqueur `e2e`, skippé sans stack).
   **Exécution bout-en-bout à faire sur stack déployée.**
-- [ ] **Phase 4 — Industrialisation** : stack éphémère (apply→E2E→destroy) ou
-  sandbox long-vécu, assertions d'observabilité (EMF par `correlation_id`), CI nightly.
+- [ ] **Phase 4 — Industrialisation CI** (⏳ **à faire — non démarrée**) : pipeline
+  nightly/on-demand `pytest -m e2e` ; stack éphémère (apply→E2E→destroy) ou sandbox
+  long-vécu ; fixtures PR auto + teardown (idempotence + quota) ; assertions
+  d'observabilité (EMF par `correlation_id`) ; secrets CI à moindre privilège.
+  Prérequis : backend state paramétré (retirer le bucket codé en dur). Détail dans
+  `e2e/README.md` (section Phase 4).

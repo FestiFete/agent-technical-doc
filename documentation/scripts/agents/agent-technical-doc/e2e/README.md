@@ -326,9 +326,30 @@ Options utiles : `-m e2e` pour ne cibler que le test E2E ; le lancer avec
 
 ### Prochaines étapes (Phase 4)
 
-Industrialisation : stack éphémère (`apply` → E2E → `destroy`) ou sandbox
-long-vécu, assertions d'observabilité (métriques EMF par `correlation_id`), job CI
-nightly.
+Voir la section dédiée ci-dessous.
+
+## Phase 4 — Industrialisation CI (⏳ à faire)
+
+**Statut : non implémentée.** Objectif : rendre le bout-en-bout rejouable
+automatiquement et l'intégrer à la CI. Reste à faire :
+
+- **Pipeline CI** (nightly / on-demand, pas à chaque commit vu le coût Bedrock et
+  la durée) exécutant `pytest -m e2e` avec les secrets d'un sandbox.
+- **Stack éphémère** : `terraform apply` → E2E → `terraform destroy` (ou sandbox
+  long-vécu réutilisé). Suppose d'abord de **paramétrer le backend S3** (retirer le
+  bucket de state codé en dur dans les `providers.tf`).
+- **Fixtures automatiques** : créer/rafraîchir une PR de test (nouveau commit →
+  nouveau `sha` pour contourner l'idempotence), puis **teardown** (branche/PR,
+  clé DynamoDB d'idempotence, compteurs `ratelimit#…`).
+- **Assertions d'observabilité** : vérifier les métriques EMF (`Runs` par `Outcome`,
+  `DurationMs`) via le `correlation_id` du run, en plus de la vérification GitHub.
+- **Gestion des secrets CI** : clé privée App / HMAC / creds AWS de test à moindre
+  privilège, injectés par le coffre du pipeline.
+- **Rapport & artefacts** : capture des logs des 3 composants en cas d'échec.
+
+Prérequis amont : Phases 2 (déploiement) et 3 (harnais) opérationnelles, plus les
+chantiers infra « forts enjeux » (CI/CD, backend paramétré) listés dans
+`.kiro/specs/agent-technical-doc/tasks.md`.
 
 ### Notes
 

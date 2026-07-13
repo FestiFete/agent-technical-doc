@@ -19,11 +19,13 @@ documentation/
 │   ├── agents/
 │   │   ├── agents.json        # source de vérité (discovery + env)
 │   │   └── agent-technical-doc/
-│   │       ├── agent.py        # entrypoint BedrockAgentCoreApp
+│   │       ├── agent.py         # entrypoint BedrockAgentCoreApp (async)
 │   │       ├── instructions.md # prompt système durci (anti prompt-injection)
 │   │       ├── Dockerfile      # image ARM64
 │   │       ├── requirements.txt
+│   │       ├── requirements-dev.txt  # pytest (dev/test)
 │   │       ├── docagent/       # logique métier (testable sans boto3/strands)
+│   │       ├── e2e/            # tests E2E : local_run, smoke_check, harness (+ README)
 │   │       └── tests/          # tests unitaires/intégration (sans réseau)
 │   └── lambdas/
 │       ├── webhook-receiver/   # HMAC + filtrage + autorisation + dedup + enqueue
@@ -130,11 +132,29 @@ branche de la PR et poste un commentaire récapitulatif.
 ## Tests
 
 ```bash
-# Logique de l'agent
-cd scripts/agents/agent-technical-doc && python3 -m pytest -q
+# Logique de l'agent (unitaires + intégration, sans réseau)
+cd scripts/agents/agent-technical-doc
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt -r requirements-dev.txt
+python3 -m pytest -q
 # Lambdas d'ingestion
 cd ../../lambdas && python3 -m pytest -q
 ```
+
+### Tests E2E (`scripts/agents/agent-technical-doc/e2e/`)
+
+Progression et procédures détaillées dans **`e2e/README.md`** :
+
+- **Phase 0 — contrats locaux** (RS256 réel, entrypoint async, tarball) : ✅ tests.
+- **Phase 1 — runner « vraies dépendances »** (`e2e/local_run.py`) : ✅ exécute la
+  vraie orchestration (App/PAT, tarball, Bedrock, draw.io, commit) sans chaîne AWS
+  (dry-run par défaut ; `--out` pour l'aperçu local ; `--commit` pour le réel).
+- **Phase 2 — déploiement sandbox + smoke** : runbook + `e2e/smoke_check.py` (verdict
+  PASS/FAIL/TIMEOUT). ▶ exécution du déploiement à faire côté sandbox.
+- **Phase 3 — harnais automatisé** : `e2e/harness.py` (événement webhook synthétique
+  signé) + cross-check hors ligne + test gated `tests/test_e2e_webhook.py` (`-m e2e`).
+  ▶ bout-en-bout à jouer sur stack déployée.
+- **Phase 4 — industrialisation CI** : ⏳ **à faire** (voir `e2e/README.md`).
 
 ## Sécurité (points clés)
 
