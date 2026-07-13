@@ -1,6 +1,6 @@
 {
     "agent-technical-doc": {
-        "enabled": false,
+        "enabled": true,
         "description": "agent-technical-doc — génère la documentation technique d'un projet à partir d'un dépôt GitHub (déclenché par un @mention dans une PR). Clone en lecture seule, analyse statique (finalité, stack, patterns, architecture), produit du Markdown + des schémas draw.io (C4 + Séquence + ER) commités sur la branche de la PR. Runtime PUBLIC (auth IAM), headless, sans état (ni Memory ni KB).",
         "environment_variables": {
             "BEDROCK_REGION": "eu-central-1",

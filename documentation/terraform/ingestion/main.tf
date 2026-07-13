@@ -52,7 +52,7 @@ data "aws_iam_policy_document" "lambda_assume" {
 }
 
 resource "aws_iam_role" "webhook" {
-  name               = "${local.name}-webhook-role"
+  name               = "${var.role_name_prefix}${local.name}-webhook-role"
   assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
 }
 
@@ -94,7 +94,7 @@ resource "aws_iam_role_policy" "webhook" {
 # IAM : rôle de la Lambda worker (InvokeAgentRuntime scopé à l'ARN).
 # ============================================================================
 resource "aws_iam_role" "worker" {
-  name               = "${local.name}-worker-role"
+  name               = "${var.role_name_prefix}${local.name}-worker-role"
   assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
 }
 
@@ -106,6 +106,14 @@ resource "aws_iam_role_policy_attachment" "worker_basic" {
 resource "aws_iam_role_policy" "worker" {
   name = "${local.name}-worker-policy"
   role = aws_iam_role.worker.id
+
+  lifecycle {
+    precondition {
+      condition     = local.runtime_arn != ""
+      error_message = "ARN du runtime vide : déployez d'abord le module 'runtime' avec l'agent activé (scripts/agents/agents.json → \"enabled\": true), puis réappliquez 'ingestion'."
+    }
+  }
+
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [

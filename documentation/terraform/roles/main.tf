@@ -1,7 +1,7 @@
 # ─── Rôle d'exécution AgentCore Runtime (moindre privilège) ──────────────────
 
 resource "aws_iam_role" "runtime_execution" {
-  name        = "${var.project_name}-agentcore-runtime-execution-${var.environment}"
+  name        = "${var.role_name_prefix}${var.project_name}-agentcore-runtime-execution-${var.environment}"
   description = "Rôle d'exécution AgentCore Runtime pour agent-technical-doc"
 
   assume_role_policy = jsonencode({
@@ -16,7 +16,7 @@ resource "aws_iam_role" "runtime_execution" {
     }]
   })
 
-  tags = { Name = "${var.project_name}-agentcore-runtime-execution-${var.environment}" }
+  tags = { Name = "${var.role_name_prefix}${var.project_name}-agentcore-runtime-execution-${var.environment}" }
 }
 
 resource "aws_iam_role_policy" "runtime_execution" {

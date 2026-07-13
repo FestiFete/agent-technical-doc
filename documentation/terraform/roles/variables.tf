@@ -23,3 +23,9 @@ variable "ecr_repository_name" {
   description = "Nom du repository ECR (défaut: {project_name}-ecr)"
   default     = null
 }
+
+variable "role_name_prefix" {
+  type        = string
+  description = "Préfixe imposé aux noms de rôles IAM (guardrail org : iam:CreateRole n'est autorisé que si le nom commence par ce préfixe)."
+  default     = "limited-"
+}
