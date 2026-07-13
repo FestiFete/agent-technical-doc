@@ -60,11 +60,3 @@ def normalize_output_path(path: str, *, output_dir: str = DOC_OUTPUT_DIR) -> str
         )
 
     return normalized
-
-
-def is_allowed_output_path(path: str, *, output_dir: str = DOC_OUTPUT_DIR) -> bool:
-    try:
-        normalize_output_path(path, output_dir=output_dir)
-        return True
-    except PathNotAllowedError:
-        return False

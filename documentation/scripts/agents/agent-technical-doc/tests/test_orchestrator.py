@@ -1,6 +1,4 @@
 """Task 7 — orchestration bout-en-bout avec dépendances injectées (sans réseau)."""
-import pytest
-
 from docagent.orchestrator import OrchestratorDeps, run_documentation
 from docagent.payload import parse_request
 
