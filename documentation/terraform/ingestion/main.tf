@@ -76,7 +76,7 @@ resource "aws_iam_role_policy" "webhook" {
       {
         Sid      = "ClaimIdempotency"
         Effect   = "Allow"
-        Action   = ["dynamodb:PutItem"]
+        Action   = ["dynamodb:PutItem", "dynamodb:UpdateItem"]
         Resource = local.idempotency_table_arn
       },
       {
@@ -168,6 +168,8 @@ resource "aws_lambda_function" "webhook" {
       QUEUE_URL                   = aws_sqs_queue.main.url
       IDEMPOTENCY_TABLE           = local.idempotency_table_name
       IDEMPOTENCY_TTL_DAYS        = tostring(local.idempotency_ttl_days)
+      MAX_RUNS_PER_REPO           = tostring(var.max_runs_per_repo)
+      RATE_WINDOW_SECONDS         = tostring(var.rate_window_seconds)
     }
   }
 

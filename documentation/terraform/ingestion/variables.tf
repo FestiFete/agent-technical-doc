@@ -67,3 +67,16 @@ variable "log_retention_days" {
   description = "Rétention des logs CloudWatch des Lambdas (jours)"
   default     = 14
 }
+
+# --- Garde-fou anti-DoS (quota de runs par dépôt) ----------------------------
+variable "max_runs_per_repo" {
+  type        = number
+  description = "Nb max de runs déclenchés par dépôt et par fenêtre (0 = désactivé)"
+  default     = 20
+}
+
+variable "rate_window_seconds" {
+  type        = number
+  description = "Durée de la fenêtre glissante du quota anti-DoS (secondes)"
+  default     = 3600
+}

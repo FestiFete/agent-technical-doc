@@ -107,3 +107,30 @@ def test_parse_api_event_base64():
     body, headers = handler.parse_api_event(event)
     assert body == raw
     assert headers["x-hub-signature-256"] == "sha256=abc"
+
+
+# --- garde-fou anti-DoS (rate limit) -----------------------------------------
+def test_window_bucket_and_key():
+    assert handler._window_bucket(7200, 3600) == 2
+    assert handler._window_bucket(7199, 3600) == 1
+    assert handler._rate_key("acme/widget", 2) == "ratelimit#acme/widget#2"
+
+
+def test_rate_limit_disabled_when_zero():
+    # max_runs<=0 → jamais limité, aucun accès DynamoDB.
+    assert handler._rate_limited("tbl", "acme/widget", 0, 3600, "eu-central-1") is False
+
+
+def test_rate_limit_allows_under_max(monkeypatch):
+    monkeypatch.setattr(handler, "_increment_repo_counter", lambda *a, **k: 5)
+    assert handler._rate_limited("tbl", "acme/widget", 20, 3600, "eu-central-1", now=1000) is False
+
+
+def test_rate_limit_allows_exactly_at_max(monkeypatch):
+    monkeypatch.setattr(handler, "_increment_repo_counter", lambda *a, **k: 20)
+    assert handler._rate_limited("tbl", "acme/widget", 20, 3600, "eu-central-1", now=1000) is False
+
+
+def test_rate_limit_blocks_over_max(monkeypatch):
+    monkeypatch.setattr(handler, "_increment_repo_counter", lambda *a, **k: 21)
+    assert handler._rate_limited("tbl", "acme/widget", 20, 3600, "eu-central-1", now=1000) is True

@@ -6,7 +6,8 @@ Responsabilités (aucune ne nécessite le token GitHub — moindre privilège) :
      ``@mention`` de l'agent.
   3. Autoriser : dépôt dans l'allowlist ET ``author_association`` autorisée.
   4. Dédupliquer (PutItem conditionnel DynamoDB sur ``repo#pr#comment_id``).
-  5. Enfiler un message SQS ``{repo_full_name, pr_number, comment_id, correlation_id}``.
+  5. Limiter le débit par dépôt (garde-fou anti-DoS : quota par fenêtre glissante).
+  6. Enfiler un message SQS ``{repo_full_name, pr_number, comment_id, correlation_id}``.
 
 Les détails de la PR (head sha/ref, statut fork) sont résolus plus tard par
 l'agent (qui détient le token). Les fonctions ``verify_signature`` et
@@ -44,6 +45,10 @@ class Config:
     queue_url: str = field(default_factory=lambda: os.environ.get("QUEUE_URL", ""))
     idempotency_table: str = field(default_factory=lambda: os.environ.get("IDEMPOTENCY_TABLE", ""))
     ttl_days: int = field(default_factory=lambda: int(os.environ.get("IDEMPOTENCY_TTL_DAYS", "30")))
+    # Garde-fou anti-DoS : nb max de runs déclenchés par dépôt et par fenêtre.
+    # 0 désactive la limite.
+    max_runs_per_repo: int = field(default_factory=lambda: int(os.environ.get("MAX_RUNS_PER_REPO", "20")))
+    rate_window_seconds: int = field(default_factory=lambda: int(os.environ.get("RATE_WINDOW_SECONDS", "3600")))
     region: str = field(default_factory=lambda: os.environ.get("AWS_REGION", "eu-central-1"))
 
 
@@ -165,6 +170,49 @@ def _enqueue(queue_url: str, message: dict, region: str) -> None:
     )
 
 
+# --- Garde-fou anti-DoS : quota de runs par dépôt et par fenêtre glissante ---
+def _window_bucket(now: float, window_seconds: int) -> int:
+    """Numéro de fenêtre temporelle (fonction pure)."""
+    return int(now) // window_seconds
+
+
+def _rate_key(repo_full_name: str, bucket: int) -> str:
+    """Clé de compteur DynamoDB (namespace distinct des clés d'idempotence)."""
+    return f"ratelimit#{repo_full_name}#{bucket}"
+
+
+def _increment_repo_counter(table: str, key: str, ttl: int, region: str) -> int:
+    """Incrémente atomiquement le compteur et retourne sa nouvelle valeur."""
+    import boto3
+    ddb = boto3.client("dynamodb", region_name=region)
+    resp = ddb.update_item(
+        TableName=table,
+        Key={"pk": {"S": key}},
+        UpdateExpression="SET #t = if_not_exists(#t, :ttl) ADD #c :one",
+        ExpressionAttributeNames={"#c": "count", "#t": "ttl"},
+        ExpressionAttributeValues={":one": {"N": "1"}, ":ttl": {"N": str(ttl)}},
+        ReturnValues="UPDATED_NEW",
+    )
+    return int(resp["Attributes"]["count"]["N"])
+
+
+def _rate_limited(table: str, repo_full_name: str, max_runs: int,
+                  window_seconds: int, region: str, *, now: float | None = None) -> bool:
+    """True si le quota de runs du dépôt est dépassé (à rejeter).
+
+    Compteur atomique par dépôt et par fenêtre, purgé par TTL. Désactivé si
+    ``max_runs <= 0``. Appelé après la déduplication : seules les demandes
+    réellement nouvelles consomment du quota.
+    """
+    if not max_runs or max_runs <= 0:
+        return False
+    now = time.time() if now is None else now
+    bucket = _window_bucket(now, window_seconds)
+    ttl = (bucket + 1) * window_seconds + 60
+    count = _increment_repo_counter(table, _rate_key(repo_full_name, bucket), ttl, region)
+    return count > max_runs
+
+
 # --- Handler -----------------------------------------------------------------
 def lambda_handler(event, context):
     cfg = Config()
@@ -197,6 +245,14 @@ def lambda_handler(event, context):
     if not _claim_idempotency(cfg.idempotency_table, key, correlation_id, cfg.ttl_days, cfg.region):
         logger.info("Doublon ignoré: %s", key)
         return _response(200, "doublon ignoré")
+
+    # 4b. Garde-fou anti-DoS : quota de runs par dépôt et par fenêtre.
+    if _rate_limited(cfg.idempotency_table, decision.repo_full_name,
+                     cfg.max_runs_per_repo, cfg.rate_window_seconds, cfg.region):
+        logger.warning("Quota de runs dépassé pour %s (max=%d / %ds) delivery=%s",
+                       decision.repo_full_name, cfg.max_runs_per_repo,
+                       cfg.rate_window_seconds, correlation_id)
+        return _response(429, "quota de runs dépassé pour ce dépôt")
 
     # 5. Enqueue.
     _enqueue(cfg.queue_url, {

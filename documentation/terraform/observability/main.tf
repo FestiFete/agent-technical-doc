@@ -122,12 +122,13 @@ resource "aws_cloudwatch_dashboard" "main" {
       {
         type = "metric", x = 12, y = 8, width = 12, height = 6,
         properties = {
-          title  = "Worker — durée d'invocation (proxy durée de run)",
+          title  = "Durée de run — EMF (ms)",
           region = var.aws_region,
           view   = "timeSeries",
-          stat   = "Average",
           metrics = [
-            ["AWS/Lambda", "Duration", "FunctionName", local.worker_fn]
+            ["AgentTechnicalDoc", "DurationMs", "Agent", var.agent_name, "Outcome", "complete", { stat = "Average", label = "moy. (complete)" }],
+            ["AgentTechnicalDoc", "DurationMs", "Agent", var.agent_name, "Outcome", "complete", { stat = "p90", label = "p90 (complete)" }],
+            ["AgentTechnicalDoc", "DurationMs", "Agent", var.agent_name, "Outcome", "failed", { stat = "Average", label = "moy. (failed)" }]
           ]
         }
       },
