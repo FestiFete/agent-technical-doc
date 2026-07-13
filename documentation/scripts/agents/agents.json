@@ -8,6 +8,9 @@
             "MODEL_ID_ESCALATION": "eu.anthropic.claude-sonnet-4-6",
             "MODEL_ESCALATION_MAX_FILES": "25",
             "MODEL_ESCALATION_MAX_BYTES": "400000",
+            "MAX_SELECTED_FILES": "40",
+            "MAX_FILE_BYTES": "80000",
+            "MAX_TOTAL_BYTES": "1200000",
             "MENTION_HANDLE": "@agent-technical-doc",
             "DOC_OUTPUT_DIR": "docs/agent"
         }

@@ -54,12 +54,18 @@ BINARY_EXTENSIONS = _list_env(
 
 @dataclass(frozen=True)
 class ReadCaps:
-    """Plafonds de lecture, bornant le contexte et l'usage mémoire."""
+    """Plafonds de lecture, bornant le contexte et l'usage mémoire.
+
+    ``max_total_bytes`` est volontairement calé **sous la fenêtre de contexte** des
+    modèles (~200K tokens ≈ ~800 Ko de texte) pour éviter tout dépassement, avec de
+    la marge pour le prompt système et la réponse. Ces valeurs pilotent directement
+    le coût Bedrock (tokens d'entrée) et la latence ; toutes surchargeables par env.
+    """
 
     max_files: int = field(default_factory=lambda: _int_env("MAX_FILES", 400))
-    max_file_bytes: int = field(default_factory=lambda: _int_env("MAX_FILE_BYTES", 200_000))
-    max_total_bytes: int = field(default_factory=lambda: _int_env("MAX_TOTAL_BYTES", 5_000_000))
-    max_selected_files: int = field(default_factory=lambda: _int_env("MAX_SELECTED_FILES", 60))
+    max_file_bytes: int = field(default_factory=lambda: _int_env("MAX_FILE_BYTES", 80_000))
+    max_total_bytes: int = field(default_factory=lambda: _int_env("MAX_TOTAL_BYTES", 1_200_000))
+    max_selected_files: int = field(default_factory=lambda: _int_env("MAX_SELECTED_FILES", 40))
 
 
 def read_caps() -> ReadCaps:
