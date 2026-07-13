@@ -34,7 +34,6 @@ dans un thread séparé pour ne pas bloquer le health check ``/ping``.
 from __future__ import annotations
 
 import logging
-import os
 import threading
 import uuid
 

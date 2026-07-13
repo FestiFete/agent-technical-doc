@@ -78,3 +78,25 @@ Ce document fige les décisions validées avec le porteur du besoin (POC).
 - PR issues de forks.
 - Rendu image (PNG/SVG) des schémas.
 - Exécution dynamique / build / tests du dépôt analysé.
+
+## État d'implémentation (mises à jour post-POC)
+
+Cette section trace les écarts entre les décisions figées ci-dessus et le code
+actuel (les décisions d'origine sont conservées telles quelles pour l'historique).
+
+- **GitHub App implémentée** (décision #7 / hors périmètre) : auth par token
+  d'installation court (~1 h) via JWT RS256, avec **repli PAT** pour la migration.
+- **Invocation asynchrone native** (décision #1) : l'agent lance le run en tâche
+  de fond (`add_async_task`/`HealthyBusy`) et rend la main immédiatement ; le worker
+  ne bloque plus.
+- **Sélection de modèle à deux niveaux** : Claude **Haiku** par défaut, escalade
+  **Sonnet** pour les dépôts volumineux/complexes.
+- **Décision #10 (gros dépôts)** : à ce jour, **sélection heuristique par score +
+  troncature + plafonds** (le *résumé hiérarchique* n'est pas encore implémenté).
+- **Fiabilité** : idempotence `repo#pr#sha` **relâchée en cas d'échec** (re-run
+  possible) ; **retries internes avec backoff** sur erreurs transitoires (Bedrock,
+  lectures GitHub) ; les écritures GitHub ne sont pas rejouées (anti-doublon).
+- **Garde-fou anti-DoS** : quota de runs par dépôt et par fenêtre glissante (webhook).
+- **Chiffrement au repos (POC)** : clés gérées AWS (`aws/secretsmanager`, SSE-SQS,
+  clé par défaut DynamoDB). Les **CMK KMS** (ENF-Sécurité-3) restent à rétablir
+  avant une mise en production à forts enjeux.

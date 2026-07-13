@@ -6,8 +6,6 @@ import importlib.util
 import json
 import os
 
-import pytest
-
 _PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                      "webhook-receiver", "handler.py")
 _spec = importlib.util.spec_from_file_location("webhook_handler", _PATH)

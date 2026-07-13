@@ -25,11 +25,11 @@ documentation/
 │   │       ├── Dockerfile      # image ARM64
 │   │       ├── requirements.txt
 │   │       ├── docagent/       # logique métier (testable sans boto3/strands)
-│   │       └── tests/          # 67 tests unitaires/intégration
+│   │       └── tests/          # tests unitaires/intégration (sans réseau)
 │   └── lambdas/
 │       ├── webhook-receiver/   # HMAC + filtrage + autorisation + dedup + enqueue
 │       ├── worker-dispatcher/  # SQS → InvokeAgentRuntime
-│       └── tests/              # 15 tests unitaires
+│       └── tests/              # tests unitaires (sans réseau)
 └── terraform/
     ├── shared.tfvars
     ├── bootstrap/     # bucket S3 du state
@@ -130,9 +130,9 @@ branche de la PR et poste un commentaire récapitulatif.
 ## Tests
 
 ```bash
-# Logique de l'agent (67 tests)
+# Logique de l'agent
 cd scripts/agents/agent-technical-doc && python3 -m pytest -q
-# Lambdas d'ingestion (15 tests)
+# Lambdas d'ingestion
 cd ../../lambdas && python3 -m pytest -q
 ```
 
