@@ -68,3 +68,25 @@ def mark_status(key: str, status: str) -> None:
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("mark_status échec (%s): %s", key, exc)
+
+
+def release(key: str) -> None:
+    """Supprime la revendication d'idempotence (best-effort, ne lève jamais).
+
+    Appelée sur **échec** d'un run : sans cela, la clé ``in_progress`` resterait
+    posée jusqu'au TTL (30 j) et bloquerait tout nouveau run sur le même commit
+    (``skipped_duplicate``). La supprimer permet à une nouvelle ``@mention`` sur le
+    même ``sha`` de relancer la génération. Le succès, lui, **conserve** la clé
+    (la déduplication reste active)."""
+    table = _table_name()
+    if not table:
+        return
+    try:
+        import boto3
+        boto3.client("dynamodb", region_name=config.BEDROCK_REGION).delete_item(
+            TableName=table,
+            Key={"pk": {"S": key}},
+        )
+        logger.info("Revendication d'idempotence relâchée après échec (%s)", key)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("release idempotency échec (%s): %s", key, exc)

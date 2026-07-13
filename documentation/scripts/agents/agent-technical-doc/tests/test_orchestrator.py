@@ -89,14 +89,17 @@ def _analysis(_ctx):
     }
 
 
-def _deps(client, analyze=_analysis, claim=lambda k, c: True):
-    return OrchestratorDeps(
+def _deps(client, analyze=_analysis, claim=lambda k, c: True, release=None):
+    kwargs = dict(
         get_token=lambda: "ghp_fake",
         make_client=lambda token: client,
         fetch_repo=lambda c, repo, ref, wd: FakeReader(),
         analyze=analyze,
         claim_idempotency=claim,
     )
+    if release is not None:
+        kwargs["release_idempotency"] = release
+    return OrchestratorDeps(**kwargs)
 
 
 def test_nominal_run_commits_and_comments(tmp_path):
@@ -212,3 +215,43 @@ def test_claim_uses_repo_pr_sha_key(tmp_path):
     run_documentation(req, session_id="s1", deps=_deps(client, claim=_claim),
                       workdir=str(tmp_path))
     assert seen["key"] == "acme/widget#42#RESOLVEDSHA"
+
+
+def test_failure_releases_idempotency(tmp_path):
+    """Échec après revendication : la clé d'idempotence est relâchée (re-run possible)."""
+    client = FakeClient()
+    released = []
+
+    def boom(_ctx):
+        raise RuntimeError("analyse impossible")
+
+    req = parse_request(_payload(), None)
+    resp = run_documentation(req, session_id="s1",
+                             deps=_deps(client, analyze=boom, release=released.append),
+                             workdir=str(tmp_path))
+    assert resp["result"]["status"] == "failed"
+    assert released == ["acme/widget#42#abcdef1234567890"]
+
+
+def test_success_keeps_idempotency(tmp_path):
+    """Succès : la clé persiste (déduplication maintenue) — pas de relâche."""
+    client = FakeClient()
+    released = []
+    req = parse_request(_payload(), None)
+    resp = run_documentation(req, session_id="s1",
+                             deps=_deps(client, release=released.append),
+                             workdir=str(tmp_path))
+    assert resp["result"]["status"] == "complete"
+    assert released == []
+
+
+def test_duplicate_does_not_release(tmp_path):
+    """Doublon (claim False) : on n'a rien revendiqué, donc rien à relâcher."""
+    client = FakeClient()
+    released = []
+    req = parse_request(_payload(), None)
+    resp = run_documentation(req, session_id="s1",
+                             deps=_deps(client, claim=lambda k, c: False, release=released.append),
+                             workdir=str(tmp_path))
+    assert resp["result"]["status"] == "skipped_duplicate"
+    assert released == []

@@ -40,6 +40,9 @@ class OrchestratorDeps:
     fetch_repo: Callable[[object, str, str, str], object]  # (client, repo, ref, workdir) -> RepoReader
     analyze: Callable[[dict], dict]
     claim_idempotency: Callable[[str, str], bool]  # (key, correlation_id) -> True si à traiter
+    # Relâche la revendication d'idempotence sur échec (autorise un re-run).
+    # Défaut no-op : les tests qui n'en ont pas besoin restent inchangés.
+    release_idempotency: Callable[[str], None] = lambda key: None
 
 
 def default_deps() -> OrchestratorDeps:
@@ -67,9 +70,14 @@ def default_deps() -> OrchestratorDeps:
         from .idempotency import claim
         return claim(key, correlation_id)
 
+    def _release(key: str) -> None:
+        from .idempotency import release
+        release(key)
+
     return OrchestratorDeps(
         get_token=_get_token, make_client=_make_client,
         fetch_repo=_fetch_repo, analyze=_analyze, claim_idempotency=_claim,
+        release_idempotency=_release,
     )
 
 
@@ -151,6 +159,7 @@ def _execute(
 
     deps = deps or default_deps()
     client = None
+    claimed = False
     try:
         token = deps.get_token()
         client = deps.make_client(token)
@@ -191,6 +200,7 @@ def _execute(
                 correlation_id=request.correlation_id,
                 message="Documentation déjà générée pour ce commit.",
             )
+        claimed = True
 
         # Clone (lecture seule) + contexte borné.
         wd = workdir or tempfile.mkdtemp(prefix="docagent-")
@@ -229,6 +239,13 @@ def _execute(
     except Exception as exc:  # noqa: BLE001 — on garantit un commentaire terminal
         reason = mask_secrets(str(exc))
         logger.error("Echec du run: %s", reason, exc_info=True)
+        # Relâche la revendication d'idempotence pour autoriser un re-run sur le
+        # même commit (sinon la clé in_progress bloquerait jusqu'au TTL).
+        if claimed:
+            try:
+                deps.release_idempotency(request.idempotency_key)
+            except Exception as exc2:  # noqa: BLE001 — best-effort
+                logger.warning("Relâche idempotence impossible: %s", mask_secrets(str(exc2)))
         if client is not None:
             try:
                 client.post_issue_comment(
