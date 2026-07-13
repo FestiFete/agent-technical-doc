@@ -65,5 +65,5 @@ variable "max_receive_count" {
 variable "log_retention_days" {
   type        = number
   description = "Rétention des logs CloudWatch des Lambdas (jours)"
-  default     = 30
+  default     = 14
 }

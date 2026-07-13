@@ -39,5 +39,5 @@ variable "runtime_error_threshold" {
 variable "log_retention_days" {
   type        = number
   description = "Rétention des logs CloudWatch du runtime (jours)"
-  default     = 30
+  default     = 14
 }
