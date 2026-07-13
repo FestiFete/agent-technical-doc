@@ -16,4 +16,4 @@ project_name = "technical-doc"
 environment  = "POC"
 
 # Bucket S3 du state Terraform (créé par le module bootstrap). À adapter.
-state_bucket = "amzn-agent-technical-doc-statetf-CHANGEME-eu-central-1"
+state_bucket = "amzn-agent-technical-doc-statetf-375039967495-eu-central-1"

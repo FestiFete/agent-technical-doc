@@ -9,7 +9,7 @@ terraform {
   }
 
   backend "s3" {
-    bucket  = "amzn-agent-technical-doc-statetf-CHANGEME-eu-central-1"
+    bucket  = "amzn-agent-technical-doc-statetf-375039967495-eu-central-1"
     region  = "eu-central-1"
     key     = "security/terraform.tfstate"
     encrypt = true
