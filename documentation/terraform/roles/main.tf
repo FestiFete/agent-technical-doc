@@ -69,9 +69,9 @@ resource "aws_iam_role_policy" "runtime_execution" {
         Resource = local.github_token_secret_arn
       },
       {
-        Sid      = "IdempotencyStatusUpdate"
+        Sid      = "IdempotencyClaimRelease"
         Effect   = "Allow"
-        Action   = ["dynamodb:GetItem", "dynamodb:UpdateItem"]
+        Action   = ["dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:GetItem", "dynamodb:UpdateItem"]
         Resource = local.idempotency_table_arn
       }
       # Statement KMS retiré : secrets aws/secretsmanager + DynamoDB clé AWS par
