@@ -6,7 +6,7 @@ mention_handle = "@agent-technical-doc"
 # ALLOWLIST — OBLIGATOIRE : liste des dépôts autorisés à déclencher l'agent.
 # Vide = aucun dépôt autorisé (fail-safe). Renseignez vos dépôts ici.
 allowed_repositories = [
-  # "mon-org/mon-repo",
+  "FestiFete/RogerVoiceTest",
 ]
 
 allowed_author_associations = ["OWNER", "MEMBER", "COLLABORATOR"]
