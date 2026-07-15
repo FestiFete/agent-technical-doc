@@ -57,8 +57,10 @@ Commentaire PR @agent
        → rendu Markdown + .drawio → commit unique docs/agent/** → commentaire terminal
 ```
 
-Détails dans `.kiro/specs/agent-technical-doc/design.md` (diagramme, invariants de
-sécurité, analyse Well-Architected par pilier).
+Schémas détaillés (chaîne complète + pipeline interne de l'agent + inventaire des
+composants) : voir [`ARCHITECTURE.md`](ARCHITECTURE.md). Invariants de sécurité et
+analyse Well-Architected : `.kiro/specs/agent-technical-doc/design.md`. Audit
+complet : [`AUDIT.md`](AUDIT.md).
 
 ## Prérequis
 
