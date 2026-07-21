@@ -30,3 +30,18 @@ provider "aws" {
     }
   }
 }
+
+# WAFv2 scope=CLOUDFRONT (et sa logging configuration) doit être créé en
+# us-east-1 quelle que soit la région du reste de la stack — contrainte AWS
+# globale, cf. waf.tf.
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
+  default_tags {
+    tags = {
+      Project = var.project_name
+      Env     = var.environment
+      Module  = "ingestion"
+    }
+  }
+}

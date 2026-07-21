@@ -1,5 +1,10 @@
 output "webhook_url" {
-  description = "URL du webhook à configurer dans GitHub (Payload URL)"
+  description = "URL du webhook à configurer dans GitHub (Payload URL) — passe par CloudFront+WAF (SEC-F1), ne pas utiliser l'URL API Gateway directe"
+  value       = "https://${aws_cloudfront_distribution.webhook.domain_name}/webhook"
+}
+
+output "webhook_api_gateway_url" {
+  description = "URL API Gateway directe (origine derrière CloudFront) — debug/diagnostic uniquement, ne pas configurer côté GitHub : elle contourne le WAF"
   value       = "${aws_apigatewayv2_api.webhook.api_endpoint}/webhook"
 }
 

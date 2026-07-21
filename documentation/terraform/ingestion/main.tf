@@ -80,9 +80,9 @@ resource "aws_iam_role_policy" "webhook" {
         Resource = local.idempotency_table_arn
       },
       {
-        Sid    = "RateLimitQuery"
-        Effect = "Allow"
-        Action = ["dynamodb:Query"]
+        Sid      = "RateLimitQuery"
+        Effect   = "Allow"
+        Action   = ["dynamodb:Query"]
         Resource = local.idempotency_table_arn
         Condition = {
           StringEquals = {
@@ -142,9 +142,9 @@ resource "aws_iam_role_policy" "worker" {
         Resource = aws_sqs_queue.main.arn
       },
       {
-        Sid    = "InvokeRuntimeScoped"
-        Effect = "Allow"
-        Action = ["bedrock-agentcore:InvokeAgentRuntime"]
+        Sid      = "InvokeRuntimeScoped"
+        Effect   = "Allow"
+        Action   = ["bedrock-agentcore:InvokeAgentRuntime"]
         Resource = local.runtime_arn
       }
       # Statement KMS retiré : SSE-SQS (POC sans CMK).
