@@ -1,0 +1,261 @@
+{
+  "target": "/Users/g.mirambeau/Development/AWS/agent-technical-doc",
+  "timestamp_utc": "20260720-000000",
+  "mode": "static",
+  "weights": {
+    "security": 1.5,
+    "reliability": 1.3,
+    "operational-excellence": 1.0,
+    "performance-efficiency": 1.0,
+    "cost-optimization": 1.0,
+    "sustainability": 1.0,
+    "architecture": 1.0,
+    "terraform": 1.0,
+    "modularity": 1.0,
+    "decoupling": 1.0,
+    "scalability": 1.0,
+    "maintainability": 1.0
+  },
+  "global": {
+    "score": 77,
+    "maturity_uncapped": 4,
+    "maturity": 4,
+    "capped": false,
+    "capping_findings": []
+  },
+  "pillars": [
+    {
+      "pillar": "operational-excellence",
+      "title": "Operational Excellence",
+      "applicable": true,
+      "status": "ok",
+      "score": 82,
+      "maturity": 4,
+      "coverage": 0.85,
+      "confidence": "medium",
+      "criteria": [],
+      "strengths": [
+        {"text": "Structured observability with CloudWatch alarms and dashboard", "evidence": ["documentation/terraform/observability/main.tf:24-167"]}
+      ],
+      "findings": [
+        {"id": "OPS-F1", "title": "No CI/CD pipeline for linting, tests, and Terraform validation", "severity": "Medium", "evidence": ["documentation/README.md:141-143"], "impact": "Deployments are more manual and error-prone.", "recommendation": "Add a CI pipeline that runs tests and Terraform validation on each change.", "alternative": null, "cross_ref_pillars": []}
+      ],
+      "improvements": [],
+      "notes": "Strong operational telemetry and runbook documentation; automation remains the main gap."
+    },
+    {
+      "pillar": "security",
+      "title": "Security",
+      "applicable": true,
+      "status": "ok",
+      "score": 68,
+      "maturity": 3,
+      "coverage": 0.8,
+      "confidence": "medium",
+      "criteria": [],
+      "strengths": [
+        {"text": "Webhook signature verification and repository allowlist are implemented in code", "evidence": ["documentation/scripts/lambdas/webhook-receiver/handler.py:56-101", "documentation/scripts/lambdas/webhook-receiver/handler.py:224-250"]}
+      ],
+      "findings": [
+        {"id": "SEC-F1", "title": "Publicly exposed entrypoint without WAF and without CMK-backed encryption controls", "severity": "Critical", "evidence": ["documentation/terraform/ingestion/main.tf:1-20", "documentation/terraform/security/main.tf:9-12", "documentation/terraform/runtime/main.tf:17-20"], "impact": "The public API endpoint and sensitive data stores remain exposed to a higher-than-necessary attack surface in a production-style deployment.", "recommendation": "Add WAF and KMS CMK-based encryption for secrets, queues and data stores before production hardening.", "alternative": {"summary": "Place a WAF and private networking layer in front of the public endpoint while preserving the current serverless design.", "pros": ["Improved L7 protection", "Reduced public attack surface"], "cons": ["More infrastructure components", "Additional operational overhead"], "effort": "M", "cross_pillar_impact": ["reliability +", "cost +/-"]}, "cross_ref_pillars": []}
+      ],
+      "improvements": [],
+      "notes": "The codebase has solid anti-injection and least-privilege controls, but the production hardening gaps are significant."
+    },
+    {
+      "pillar": "reliability",
+      "title": "Reliability",
+      "applicable": true,
+      "status": "ok",
+      "score": 78,
+      "maturity": 4,
+      "coverage": 0.8,
+      "confidence": "medium",
+      "criteria": [],
+      "strengths": [
+        {"text": "Idempotency, DLQ, and retries are implemented for the ingestion path", "evidence": ["documentation/scripts/lambdas/webhook-receiver/handler.py:141-157", "documentation/terraform/ingestion/main.tf:1-20", "documentation/terraform/observability/main.tf:24-57"]}
+      ],
+      "findings": [
+        {"id": "REL-F1", "title": "No multi-region or disaster recovery design is present", "severity": "High", "evidence": ["documentation/AUDIT.md:57-61"], "impact": "A regional outage would disrupt the ingestion chain and documentation generation flow.", "recommendation": "Add a DR strategy with replicated state, backup, and failover coverage.", "alternative": null, "cross_ref_pillars": []}
+      ],
+      "improvements": [],
+      "notes": "The core control flow is resilient within a single region."
+    },
+    {
+      "pillar": "performance-efficiency",
+      "title": "Performance Efficiency",
+      "applicable": true,
+      "status": "ok",
+      "score": 80,
+      "maturity": 4,
+      "coverage": 0.8,
+      "confidence": "medium",
+      "criteria": [],
+      "strengths": [
+        {"text": "ARM64 and async execution reduce cost and improve latency", "evidence": ["documentation/terraform/ingestion/main.tf:159-205", "documentation/terraform/runtime/main.tf:11-20"]}
+      ],
+      "findings": [
+        {"id": "PERF-F1", "title": "The agent loads the entire tarball into memory, which limits large-repo handling", "severity": "Medium", "evidence": ["documentation/AUDIT.md:56-57"], "impact": "Very large repositories may hit memory or context constraints.", "recommendation": "Stream and parallelize repository analysis for large repositories.", "alternative": null, "cross_ref_pillars": []}
+      ],
+      "improvements": [],
+      "notes": "Good baseline performance tuning for a serverless workflow."
+    },
+    {
+      "pillar": "cost-optimization",
+      "title": "Cost Optimization",
+      "applicable": true,
+      "status": "ok",
+      "score": 88,
+      "maturity": 4,
+      "coverage": 0.85,
+      "confidence": "medium",
+      "criteria": [],
+      "strengths": [
+        {"text": "Default Haiku model and bounded context reduce Bedrock spend", "evidence": ["documentation/README.md:17-21", "documentation/scripts/agents/agent-technical-doc/docagent/config.py:65-68"]}
+      ],
+      "findings": [
+        {"id": "COST-F1", "title": "Cost controls are mostly operational and not yet codified into budgets or policy", "severity": "Low", "evidence": ["documentation/AUDIT.md:56-61"], "impact": "Spend can grow unexpectedly on large or repeated runs.", "recommendation": "Add AWS budgets and prompt caching when available.", "alternative": null, "cross_ref_pillars": []}
+      ],
+      "improvements": [],
+      "notes": "The architecture stays scale-to-zero and is cost conscious by design."
+    },
+    {
+      "pillar": "sustainability",
+      "title": "Sustainability",
+      "applicable": true,
+      "status": "ok",
+      "score": 81,
+      "maturity": 4,
+      "coverage": 0.75,
+      "confidence": "medium",
+      "criteria": [],
+      "strengths": [
+        {"text": "Serverless, event-driven execution lowers idle consumption", "evidence": ["documentation/ARCHITECTURE.md:14-25", "documentation/terraform/ingestion/main.tf:159-205"]}
+      ],
+      "findings": [
+        {"id": "SUST-F1", "title": "No explicit sustainability policy or energy-aware optimization is documented", "severity": "Info", "evidence": ["documentation/README.md:1-40"], "impact": "Limited impact; the design is already relatively efficient.", "recommendation": "Document sustainability targets and review model selection thresholds periodically.", "alternative": null, "cross_ref_pillars": []}
+      ],
+      "improvements": [],
+      "notes": "The service is already efficient by design, but no explicit sustainability governance is stated."
+    },
+    {
+      "pillar": "architecture",
+      "title": "Architecture",
+      "applicable": true,
+      "status": "ok",
+      "score": 84,
+      "maturity": 4,
+      "coverage": 0.85,
+      "confidence": "medium",
+      "criteria": [],
+      "strengths": [
+        {"text": "The architecture cleanly separates ingress, orchestration, and runtime execution", "evidence": ["documentation/ARCHITECTURE.md:1-80", "documentation/README.md:1-30"]}
+      ],
+      "findings": [
+        {"id": "ARCH-F1", "title": "Architecture is strong but still single-region and not fully hardened for production", "severity": "Medium", "evidence": ["documentation/AUDIT.md:57-61", "documentation/terraform/runtime/main.tf:17-20"], "impact": "Availability and blast radius are not yet optimized for production-grade resilience.", "recommendation": "Consider a multi-region and private-network evolution path for the runtime and ingress layers.", "alternative": null, "cross_ref_pillars": []}
+      ],
+      "improvements": [],
+      "notes": "The component model is coherent and well documented."
+    },
+    {
+      "pillar": "terraform",
+      "title": "Terraform",
+      "applicable": true,
+      "status": "ok",
+      "score": 76,
+      "maturity": 4,
+      "coverage": 0.8,
+      "confidence": "medium",
+      "criteria": [],
+      "strengths": [
+        {"text": "Terraform modules are modular and structured by concern", "evidence": ["documentation/terraform/bootstrap/main.tf", "documentation/terraform/ingestion/main.tf", "documentation/terraform/security/main.tf"]}
+      ],
+      "findings": [
+        {"id": "TF-F1", "title": "State backend and deployment flow are still manual and hard-coded", "severity": "High", "evidence": ["documentation/README.md:69-80"], "impact": "Repeatability and governance are weaker than they should be for larger teams.", "recommendation": "Parameterize the backend and wire CI/CD for terraform init/validate/apply workflows.", "alternative": null, "cross_ref_pillars": []}
+      ],
+      "improvements": [],
+      "notes": "The IaC is structured reasonably well, but operationalization remains incomplete."
+    },
+    {
+      "pillar": "modularity",
+      "title": "Modularity",
+      "applicable": true,
+      "status": "ok",
+      "score": 85,
+      "maturity": 4,
+      "coverage": 0.8,
+      "confidence": "medium",
+      "criteria": [],
+      "strengths": [
+        {"text": "The code is separated into testable modules such as docagent, lambdas, and Terraform modules", "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent", "documentation/terraform/ingestion/main.tf", "documentation/terraform/security/main.tf"]}
+      ],
+      "findings": [
+        {"id": "MOD-F1", "title": "The runtime and ingress modules still share some operational assumptions that could be hardened", "severity": "Low", "evidence": ["documentation/terraform/runtime/main.tf:1-40", "documentation/terraform/ingestion/main.tf:1-40"], "impact": "Minor coupling remains between runtime and ingress deployment concerns.", "recommendation": "Extract shared conventions and parameterized policies into a common module or policy layer.", "alternative": null, "cross_ref_pillars": []}
+      ],
+      "improvements": [],
+      "notes": "This is a solid modular design with clear boundaries."
+    },
+    {
+      "pillar": "decoupling",
+      "title": "Decoupling",
+      "applicable": true,
+      "status": "ok",
+      "score": 87,
+      "maturity": 4,
+      "coverage": 0.8,
+      "confidence": "medium",
+      "criteria": [],
+      "strengths": [
+        {"text": "The webhook and worker pattern decouples event ingress from runtime execution", "evidence": ["documentation/terraform/ingestion/main.tf:208-216", "documentation/scripts/lambdas/worker-dispatcher/handler.py:1-80"]}
+      ],
+      "findings": [
+        {"id": "DEC-F1", "title": "The runtime is still tightly coupled to a single ingress flow and region", "severity": "Medium", "evidence": ["documentation/terraform/runtime/main.tf:1-40", "documentation/terraform/ingestion/main.tf:159-205"], "impact": "It is less flexible for failover and alternate entry paths.", "recommendation": "Introduce a more explicitly region-agnostic deployment contract and optional failover path.", "alternative": null, "cross_ref_pillars": []}
+      ],
+      "improvements": [],
+      "notes": "The queue and event-driven design are strong decoupling mechanisms."
+    },
+    {
+      "pillar": "scalability",
+      "title": "Scalability",
+      "applicable": true,
+      "status": "ok",
+      "score": 79,
+      "maturity": 4,
+      "coverage": 0.8,
+      "confidence": "medium",
+      "criteria": [],
+      "strengths": [
+        {"text": "The design uses serverless scaling and concurrency controls", "evidence": ["documentation/terraform/ingestion/main.tf:208-216", "documentation/scripts/lambdas/worker-dispatcher/handler.py:1-80"]}
+      ],
+      "findings": [
+        {"id": "SCA-F1", "title": "Scale is bounded by the runtime and large-repo analysis limits", "severity": "Medium", "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/config.py:65-68", "documentation/AUDIT.md:56-57"], "impact": "Very large or bursty workloads can still hit practical ceilings.", "recommendation": "Introduce more streaming and batching for repository context processing.", "alternative": null, "cross_ref_pillars": []}
+      ],
+      "improvements": [],
+      "notes": "The system is built to scale on demand, but not unboundedly."
+    },
+    {
+      "pillar": "maintainability",
+      "title": "Maintainability",
+      "applicable": true,
+      "status": "ok",
+      "score": 83,
+      "maturity": 4,
+      "coverage": 0.8,
+      "confidence": "medium",
+      "criteria": [],
+      "strengths": [
+        {"text": "Test coverage is strong and the code is organized around clear modules", "evidence": ["documentation/scripts/agents/agent-technical-doc/tests", "documentation/scripts/agents/agent-technical-doc/docagent"]}
+      ],
+      "findings": [
+        {"id": "MAINT-F1", "title": "The deployment and environment configuration still require manual coordination", "severity": "Medium", "evidence": ["documentation/README.md:69-80", "documentation/terraform/ingestion/terraform.tfvars"], "impact": "Operational complexity is higher than ideal for a growing team.", "recommendation": "Automate environment setup and documentation updates through a repeatable deployment process.", "alternative": null, "cross_ref_pillars": []}
+      ],
+      "improvements": [],
+      "notes": "The repository is relatively maintainable thanks to tests and structure."
+    }
+  ],
+  "roadmap": [
+    {"priority": "P1", "type": "quick_win", "pillar": "security", "finding_id": "SEC-F1", "action": "Add WAF and CMK-backed encryption controls for the ingress and data paths.", "effort": "M"},
+    {"priority": "P2", "type": "quick_win", "pillar": "terraform", "finding_id": "TF-F1", "action": "Introduce CI and parameterized backend configuration for Terraform.", "effort": "M"},
+    {"priority": "P3", "type": "structural", "pillar": "reliability", "finding_id": "REL-F1", "action": "Design a multi-region or DR strategy for the runtime and stateful services.", "effort": "L"}
+  ]
+}
