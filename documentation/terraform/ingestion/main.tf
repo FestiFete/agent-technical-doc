@@ -80,6 +80,17 @@ resource "aws_iam_role_policy" "webhook" {
         Resource = local.idempotency_table_arn
       },
       {
+        Sid    = "RateLimitQuery"
+        Effect = "Allow"
+        Action = ["dynamodb:Query"]
+        Resource = local.idempotency_table_arn
+        Condition = {
+          StringEquals = {
+            "dynamodb:LeadingKeys" = ["${var.mention_handle}#*"]
+          }
+        }
+      },
+      {
         Sid      = "SendToQueue"
         Effect   = "Allow"
         Action   = ["sqs:SendMessage"]
