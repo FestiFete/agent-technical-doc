@@ -95,6 +95,11 @@ resource "aws_iam_role_policy" "webhook" {
         Effect   = "Allow"
         Action   = ["sqs:SendMessage"]
         Resource = aws_sqs_queue.main.arn
+        Condition = {
+          StringEquals = {
+            "sqs:QueueName" = aws_sqs_queue.main.name
+          }
+        }
       }
       # Statement KMS retiré : SSE-SQS + secrets aws/secretsmanager (POC sans CMK).
     ]
