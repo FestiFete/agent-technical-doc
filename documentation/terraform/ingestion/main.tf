@@ -137,7 +137,7 @@ resource "aws_iam_role_policy" "worker" {
         Sid    = "ConsumeQueue"
         Effect = "Allow"
         Action = [
-          "sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"
+          "sqs:ReceiveMessage", "sqs:DeleteMessage"
         ]
         Resource = aws_sqs_queue.main.arn
       },
