@@ -1,0 +1,441 @@
+{
+  "target": "/Users/g.mirambeau/Development/AWS/agent-technical-doc",
+  "timestamp_utc": "20260721-133806",
+  "mode": "static",
+  "weights": {
+    "security": 1.5,
+    "reliability": 1.3,
+    "operational-excellence": 1.0,
+    "performance-efficiency": 1.0,
+    "cost-optimization": 1.0,
+    "sustainability": 1.0,
+    "architecture": 1.0,
+    "terraform": 1.0,
+    "modularity": 1.0,
+    "decoupling": 1.0,
+    "scalability": 1.0,
+    "maintainability": 1.0
+  },
+  "global": {
+    "score": 76,
+    "maturity_uncapped": 4,
+    "maturity": 4,
+    "capped": false,
+    "capping_findings": []
+  },
+  "pillars": [
+    { "pillar": "operational-excellence", "title": "Operational Excellence", "applicable": true, "status": "ok", "score": 57, "maturity": 3, "coverage": 0.95, "confidence": "medium",
+      "criteria": [
+        { "id": "OPS-01", "statement": "Infrastructure & operations defined as code (no manual console drift).", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/terraform/*/main.tf", "documentation/README.md:105-116"], "notes": "7 chained Terraform modules; secret values set out-of-band but documented/expected, not drift." },
+        { "id": "OPS-02", "statement": "CI/CD pipeline exists with automated build/test/deploy stages.", "verdict": "Missing", "weight": 1.5, "evidence": ["documentation/README.md:78-95", "documentation/README.md:159"], "notes": "No .github/workflows/ found; deployment fully manual; README explicitly flags CI as 'à faire'." },
+        { "id": "OPS-03", "statement": "Deployments are small, reversible; rollback strategy defined.", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/terraform/ecr/main.tf:22-51", "documentation/terraform/runtime/main.tf:11-15", "documentation/README.md:186-204"], "notes": "Digest pinning + image retention enable manual rollback, but no documented rollback procedure." },
+        { "id": "OPS-04", "statement": "Structured, centralized logging (correlation ids, no secrets in logs).", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/correlation.py:1-49", "documentation/scripts/lambdas/webhook-receiver/handler.py:220-264", "documentation/terraform/ingestion/main.tf:158-166"], "notes": "Gap: no API Gateway access logging (see OPS-F5)." },
+        { "id": "OPS-05", "statement": "Metrics on the golden signals (latency, traffic, errors, saturation).", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/terraform/observability/main.tf:86-160", "documentation/scripts/agents/agent-technical-doc/docagent/metrics.py:1-49"], "notes": "Saturation weakly covered (queue depth dashboarded, not alarmed)." },
+        { "id": "OPS-06", "statement": "Distributed tracing / request correlation where relevant.", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/correlation.py:1-23", "documentation/terraform/ingestion/main.tf:171-217"], "notes": "Correlation id + OTel in runtime container, but no X-Ray/OTel on ingestion Lambdas." },
+        { "id": "OPS-07", "statement": "Actionable alarms tied to SLIs; on-call/notification path defined.", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/terraform/observability/main.tf:24-70", "documentation/terraform/observability/variables.tf:21-25"], "notes": "alarm_actions defaults to []; no SNS topic exists in-repo." },
+        { "id": "OPS-08", "statement": "Runbooks / operational docs for common tasks & incidents.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/README.md:186-204"], "notes": "DLQ triage, run tracing, secret rotation, allowlist/quota tuning, dedup troubleshooting all documented." },
+        { "id": "OPS-09", "statement": "Health checks & readiness/liveness for services.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/scripts/agents/agent-technical-doc/agent.py:24-32,80,93"], "notes": "/ping HealthyBusy pattern, explicitly non-blocking." },
+        { "id": "OPS-10", "statement": "Config management & environment parity (dev/stage/prod).", "verdict": "Missing", "weight": 1.0, "evidence": ["documentation/terraform/shared.tfvars:18", "documentation/terraform/ingestion/providers.tf:15-20"], "notes": "Single hardcoded 'POC' environment." },
+        { "id": "OPS-11", "statement": "Automated tests as a release gate (unit/integration).", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/README.md:134-144"], "notes": "Substantial test suite exists but nothing enforces it pre-deploy (no CI)." },
+        { "id": "OPS-12", "statement": "Post-incident/feedback mechanism (retros, error budgets).", "verdict": "Missing", "weight": 0.5, "evidence": [], "notes": "No SLI/SLO/retro/post-mortem process found." },
+        { "id": "OPS-13", "statement": "Tagging strategy enabling operational ownership.", "verdict": "Met", "weight": 0.5, "evidence": ["documentation/terraform/ingestion/providers.tf:25-31"], "notes": "default_tags in most modules." },
+        { "id": "OPS-14", "statement": "Dashboards for operational visibility.", "verdict": "Met", "weight": 0.5, "evidence": ["documentation/terraform/observability/main.tf:75-163"], "notes": "6-widget CloudWatch dashboard." }
+      ],
+      "strengths": [
+        { "text": "End-to-end correlation_id threaded through webhook → SQS → worker → runtime.", "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/correlation.py:1-23"] },
+        { "text": "100% infra-as-code across 7 chained Terraform modules.", "evidence": ["documentation/terraform/*/main.tf"] },
+        { "text": "Written runbook covering DLQ triage, run tracing, secret rotation, allowlist/quota tuning.", "evidence": ["documentation/README.md:186-204"] }
+      ],
+      "findings": [
+        { "id": "OPS-F1", "title": "No CI/CD pipeline; fully manual deployment", "severity": "High", "evidence": ["documentation/README.md:78-95"], "impact": "Every deploy depends on an operator running correct commands manually; no automated test/plan/apply gate.", "recommendation": "Add a GitHub Actions pipeline: fmt/validate/pytest on PR, gated apply on merge.", "alternative": { "summary": "GitHub Actions with OIDC federation to an AWS deploy role.", "pros": ["Closes manual-deploy gap cheaply"], "cons": ["Needs scoped deploy IAM role", "Chained remote-state across 7 modules needs sequencing"], "effort": "M", "cross_pillar_impact": ["security", "terraform", "maintainability"] }, "cross_ref_pillars": ["terraform", "maintainability"] },
+        { "id": "OPS-F2", "title": "Alarms exist but no notification target wired by default", "severity": "High", "evidence": ["documentation/terraform/observability/variables.tf:21-25"], "impact": "Alarms fire into the void unless an operator manually supplies an SNS ARN; no on-call path exists.", "recommendation": "Provision an SNS topic + subscription, default alarm_actions to it.", "alternative": { "summary": "Minimal SNS topic + email subscription in Terraform.", "pros": ["S-effort fix"], "cons": ["Still requires a real on-call process"], "effort": "S", "cross_pillar_impact": ["reliability"] }, "cross_ref_pillars": ["reliability"] },
+        { "id": "OPS-F3", "title": "No environment parity; single hardcoded 'POC' environment", "severity": "Medium", "evidence": ["documentation/terraform/shared.tfvars:18"], "impact": "No isolated environment to test infra/app changes.", "recommendation": "Parameterize backend keys per environment, stand up a staging environment.", "alternative": null, "cross_ref_pillars": ["terraform"] },
+        { "id": "OPS-F4", "title": "Automated tests are not a release gate", "severity": "Medium", "evidence": ["documentation/README.md:134-144"], "impact": "A regression can be deployed if the manual test step is skipped.", "recommendation": "Wire pytest into CI as a blocking check.", "alternative": null, "cross_ref_pillars": [] },
+        { "id": "OPS-F6", "title": "No distributed tracing across the Lambda hops", "severity": "Medium", "evidence": ["documentation/terraform/ingestion/main.tf:171-217"], "impact": "Cross-component latency/causal analysis depends on grepping a correlation_id.", "recommendation": "Enable AWS X-Ray active tracing on both Lambda functions.", "alternative": null, "cross_ref_pillars": [] },
+        { "id": "OPS-F5", "title": "API Gateway stage has no access logging configured", "severity": "Low", "evidence": ["documentation/terraform/ingestion/main.tf:252-261"], "impact": "Edge-level request logs not captured independently of Lambda logs.", "recommendation": "Add access_log_settings to the $default stage.", "alternative": null, "cross_ref_pillars": [] },
+        { "id": "OPS-F7", "title": "No post-incident / feedback loop mechanism defined", "severity": "Low", "evidence": [], "impact": "No structured mechanism to turn DLQ incidents into process improvements.", "recommendation": "Define a lightweight incident log tied to the runbook.", "alternative": null, "cross_ref_pillars": [] }
+      ],
+      "improvements": [
+        { "priority": "P1", "text": "Stand up a minimal CI pipeline — closes OPS-F1 and OPS-F4", "effort": "M" },
+        { "priority": "P1", "text": "Create an SNS topic + subscription and wire it as default alarm_actions — OPS-F2", "effort": "S" },
+        { "priority": "P2", "text": "Enable X-Ray active tracing on the webhook/worker Lambdas — OPS-F6", "effort": "S" },
+        { "priority": "P2", "text": "Parameterize Terraform backend per environment — OPS-F3", "effort": "M" },
+        { "priority": "P3", "text": "Add access_log_settings to the API Gateway $default stage — OPS-F5", "effort": "S" }
+      ],
+      "notes": "Static analysis only, live_aws=OFF. Assessed current on-disk working tree. Prior pillar-run score (82/100) treated as unverified claim per instructions; independent re-score is materially lower, mainly due to OPS-02, OPS-07, OPS-10 not being verifiable as Met." },
+
+    { "pillar": "security", "title": "Security", "applicable": true, "status": "ok", "score": 79, "maturity": 4, "coverage": 0.95, "confidence": "high",
+      "criteria": [
+        { "id": "SEC-01", "statement": "Least-privilege IAM (no wildcard * actions/resources without justification).", "verdict": "Partial", "weight": 2.0, "evidence": ["documentation/terraform/ingestion/main.tf:64-153", "documentation/terraform/roles/main.tf:42-49"], "notes": "Webhook/worker policies tightly scoped with conditions; Bedrock InvokeModel resource wildcards across all models/regions." },
+        { "id": "SEC-02", "statement": "No long-lived credentials/secrets in code or state; use of Secrets Manager/SSM/roles.", "verdict": "Met", "weight": 2.0, "evidence": ["documentation/terraform/security/main.tf:26-37,45-52", "documentation/scripts/agents/agent-technical-doc/docagent/github_auth.py:87-151"], "notes": "GitHub App short-lived tokens preferred." },
+        { "id": "SEC-03", "statement": "Encryption at rest on all data stores.", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/terraform/ingestion/main.tf:8,14", "documentation/terraform/bootstrap/main.tf:43-51", "documentation/terraform/ecr/main.tf:13-15"], "notes": "AWS-managed keys (not CMK, see SEC-07)." },
+        { "id": "SEC-04", "statement": "Encryption in transit (TLS) enforced.", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/terraform/ingestion/main.tf:234-261"], "notes": "API Gateway execute-api endpoints are TLS-only by default." },
+        { "id": "SEC-05", "statement": "Network segmentation & least-exposure.", "verdict": "Partial", "weight": 1.5, "evidence": ["documentation/terraform/runtime/main.tf:17-21"], "notes": "Fully public serverless design, no VPC/security groups; justified but unsegmented." },
+        { "id": "SEC-06", "statement": "No public exposure of data stores/admin surfaces unless justified.", "verdict": "Met", "weight": 2.0, "evidence": ["documentation/terraform/bootstrap/main.tf:53-59"], "notes": "Only the webhook API is public, HMAC-gated." },
+        { "id": "SEC-07", "statement": "KMS CMK usage & key rotation where appropriate.", "verdict": "Missing", "weight": 1.0, "evidence": ["documentation/terraform/security/main.tf:8-13,23,42"], "notes": "CMK removed account-wide due to a DENY on kms:CreateKey (documented POC compromise)." },
+        { "id": "SEC-08", "statement": "Authentication/authorization on all network-exposed endpoints/APIs.", "verdict": "Met", "weight": 2.0, "evidence": ["documentation/scripts/lambdas/webhook-receiver/handler.py:56-63,217-226"], "notes": "Constant-time HMAC check runs before any processing." },
+        { "id": "SEC-09", "statement": "Input validation / injection protection.", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/repo_reader.py:29-59"], "notes": "Tar-slip/symlink protections; no shell=True anywhere." },
+        { "id": "SEC-10", "statement": "Detective controls (CloudTrail, Config, GuardDuty, Security Hub) enabled.", "verdict": "Missing", "weight": 1.0, "evidence": ["documentation/terraform/observability/main.tf"], "notes": "None found." },
+        { "id": "SEC-11", "statement": "Dependency & image vulnerability management.", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/terraform/ecr/main.tf:9-11", "documentation/scripts/agents/agent-technical-doc/requirements.txt:1-8"], "notes": "ECR scan_on_push + digest-pinned deploys, but Python deps unpinned." },
+        { "id": "SEC-12", "statement": "Secrets not logged; PII handling & redaction.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/correlation.py:35-49"], "notes": "mask_secrets redaction helper applied before logging." },
+        { "id": "SEC-13", "statement": "Webhook/callback authenticity (signature verification).", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/scripts/lambdas/webhook-receiver/handler.py:56-63"], "notes": "hmac.compare_digest constant-time comparison." },
+        { "id": "SEC-14", "statement": "Security in CI/CD.", "verdict": "N/A", "weight": 1.0, "evidence": [], "notes": "No CI/CD pipeline exists; nothing to assess." },
+        { "id": "SEC-15", "statement": "Blast-radius containment (per-service roles, account/network boundaries).", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/terraform/ingestion/main.tf:54-153", "documentation/terraform/roles/main.tf:3-81"], "notes": "Distinct, minimally-scoped roles per component." }
+      ],
+      "strengths": [
+        { "text": "Recent and uncommitted IAM tightening verified on disk.", "evidence": ["documentation/terraform/ingestion/main.tf:64-153"] },
+        { "text": "Webhook HMAC verification is constant-time and runs before any AWS access.", "evidence": ["documentation/scripts/lambdas/webhook-receiver/handler.py:56-63"] },
+        { "text": "All data stores encrypted at rest with AWS-managed keys, correcting the prior audit's overstated 'no encryption' framing.", "evidence": ["documentation/terraform/ingestion/main.tf:8,14"] }
+      ],
+      "findings": [
+        { "id": "SEC-F1", "title": "Public webhook API Gateway endpoint has no WAF / L7 protection", "severity": "Medium", "evidence": ["documentation/terraform/ingestion/main.tf:234-261"], "impact": "Only API Gateway throttling and in-Lambda HMAC verification protect the public endpoint; no L7 filtering.", "recommendation": "Attach an AWS WAFv2 WebACL to the HTTP API stage as defense-in-depth.", "alternative": { "summary": "Keep HMAC+throttle-only vs. add WAFv2", "pros": ["Catches malformed/scanning traffic pre-Lambda"], "cons": ["Added monthly cost"], "effort": "S", "cross_pillar_impact": ["cost-optimization", "reliability"] }, "cross_ref_pillars": [] },
+        { "id": "SEC-F2", "title": "No customer-managed KMS keys (CMK); blocked by account-level policy", "severity": "Low", "evidence": ["documentation/terraform/security/main.tf:8-13,23,42"], "impact": "All encryption uses AWS-owned/managed keys; documented deliberate POC compromise.", "recommendation": "Obtain KMS permissions and re-enable kms_key_id with rotation once unblocked.", "alternative": null, "cross_ref_pillars": [] },
+        { "id": "SEC-F3", "title": "No account/project-level detective controls (CloudTrail, Config, GuardDuty, Security Hub)", "severity": "Medium", "evidence": ["documentation/terraform/observability/main.tf:1-100"], "impact": "No centralized, immutable audit trail; anomalous IAM changes would not be independently detected.", "recommendation": "Enable a baseline CloudTrail trail and metric filters/alarms on IAM/Secrets Manager access.", "alternative": null, "cross_ref_pillars": ["operational-excellence"] },
+        { "id": "SEC-F4", "title": "Bedrock model-invoke permission scoped wider than models actually used", "severity": "Low", "evidence": ["documentation/terraform/roles/main.tf:42-49"], "impact": "Runtime role can invoke any foundation model in any region.", "recommendation": "Scope the BedrockInvoke Resource to the specific model ARNs/region used.", "alternative": null, "cross_ref_pillars": [] },
+        { "id": "SEC-F5", "title": "Unpinned Python dependencies, no lockfile", "severity": "Low", "evidence": ["documentation/scripts/agents/agent-technical-doc/requirements.txt:1-8"], "impact": "Builds are not reproducible; may silently pick up vulnerable dependency versions.", "recommendation": "Pin exact versions or use a lockfile; add pip-audit/Dependabot.", "alternative": null, "cross_ref_pillars": ["terraform"] }
+      ],
+      "improvements": [
+        { "priority": "P1", "text": "Enable a baseline CloudTrail trail plus metric filters/alarms (SEC-F3)", "effort": "S" },
+        { "priority": "P1", "text": "Attach AWS WAFv2 to the public webhook API Gateway stage (SEC-F1)", "effort": "S" },
+        { "priority": "P2", "text": "Scope Bedrock InvokeModel resource to configured model ARNs (SEC-F4)", "effort": "S" },
+        { "priority": "P2", "text": "Pin Python dependency versions and add vulnerability scanning (SEC-F5)", "effort": "S" },
+        { "priority": "P3", "text": "Reintroduce customer-managed KMS keys once unblocked (SEC-F2)", "effort": "M" }
+      ],
+      "notes": "Static analysis only. Prior run's SEC-F1 (Critical) was independently re-verified: the no-WAF condition still holds but is downgraded to Medium; the 'no encryption at rest' framing was found inaccurate. No Critical findings identified; no maturity capping from this pillar." },
+
+    { "pillar": "reliability", "title": "Reliability", "applicable": true, "status": "ok", "score": 59, "maturity": 3, "coverage": 0.85, "confidence": "medium",
+      "criteria": [
+        { "id": "REL-01", "statement": "No critical single points of failure.", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/terraform/ingestion/main.tf:6-23", "documentation/terraform/security/main.tf:57-79"], "notes": "Fully-managed AWS services, inherently multi-AZ." },
+        { "id": "REL-02", "statement": "Defined RTO/RPO and a backup strategy meeting them.", "verdict": "Missing", "weight": 1.5, "evidence": ["documentation/AUDIT.md:82"], "notes": "No RTO/RPO figure found anywhere." },
+        { "id": "REL-03", "statement": "Backups exist, are encrypted, and restore is tested/testable.", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/terraform/security/main.tf:74-76", "documentation/terraform/bootstrap/main.tf:36-51"], "notes": "DynamoDB PITR + S3 versioning/KMS present; no restore-test evidence." },
+        { "id": "REL-04", "statement": "Idempotency for retried/at-least-once operations.", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/idempotency.py:22-74"], "notes": "Conditional DynamoDB PutItem claim/release." },
+        { "id": "REL-05", "statement": "Retries with backoff + jitter; timeouts set on all remote calls.", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/retry.py:75"], "notes": "Exponential backoff and timeouts, but no jitter term." },
+        { "id": "REL-06", "statement": "Dead-letter / failure isolation for async processing.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/terraform/ingestion/main.tf:6-23"], "notes": null },
+        { "id": "REL-07", "statement": "Graceful degradation & circuit breaking on dependency failure.", "verdict": "Missing", "weight": 1.0, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/retry.py"], "notes": "No circuit-breaker pattern found." },
+        { "id": "REL-08", "statement": "Health checks drive automated recovery/replacement.", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/terraform/observability/variables.tf:21-25"], "notes": "Alarms exist but no wired notification/remediation path." },
+        { "id": "REL-09", "statement": "Quotas/service limits understood; throttling handled.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/scripts/lambdas/webhook-receiver/handler.py:184-213"], "notes": null },
+        { "id": "REL-10", "statement": "Safe change management (canary/blue-green, reversible migrations).", "verdict": "Missing", "weight": 1.0, "evidence": ["documentation/terraform/runtime/main.tf:10-13"], "notes": "In-place digest replacement, no canary/traffic-shifting." },
+        { "id": "REL-11", "statement": "State managed durably.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/orchestrator.py:216"], "notes": null },
+        { "id": "REL-12", "statement": "Failure modes tested.", "verdict": "Partial", "weight": 0.5, "evidence": ["documentation/scripts/agents/agent-technical-doc/tests/test_retry.py:39-79"], "notes": "Unit-level only." },
+        { "id": "REL-13", "statement": "Dependency failure blast radius contained.", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/terraform/ingestion/variables.tf:53-57"], "notes": "Shared queue/worker/idempotency table across all allowlisted repos." }
+      ],
+      "strengths": [
+        { "text": "Strong idempotency design across both webhook dedup and agent-run dedup.", "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/idempotency.py:22-74"] },
+        { "text": "SQS main queue + DLQ with bounded maxReceiveCount and a dedicated dlq_not_empty alarm.", "evidence": ["documentation/terraform/ingestion/main.tf:6-23"] }
+      ],
+      "findings": [
+        { "id": "REL-F1", "title": "No RTO/RPO defined and no cross-region DR strategy (mono-region)", "severity": "High", "evidence": ["documentation/terraform/ingestion/providers.tf:17,24"], "impact": "A regional outage fully halts the pipeline with no defined recovery time.", "recommendation": "Document explicit RTO/RPO; consider cross-region if risk appetite requires more.", "alternative": { "summary": "Accept mono-region with documented RTO/RPO vs. warm standby", "pros": ["Warm standby bounds RTO"], "cons": ["Warm standby roughly doubles cost"], "effort": "L", "cross_pillar_impact": ["cost-optimization", "operational-excellence", "security"] }, "cross_ref_pillars": ["cost-optimization", "operational-excellence"] },
+        { "id": "REL-F2", "title": "No circuit breaking or graceful degradation on dependency failure", "severity": "Medium", "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/retry.py:53-81"], "impact": "Sustained outage continues consuming retry/Bedrock spend until DLQ.", "recommendation": "Add a lightweight breaker/cooldown.", "alternative": null, "cross_ref_pillars": ["cost-optimization"] },
+        { "id": "REL-F3", "title": "CloudWatch alarms wired to no notification target by default", "severity": "Medium", "evidence": ["documentation/terraform/observability/variables.tf:21-25"], "impact": "Alarms can fire with nobody notified.", "recommendation": "Add an SNS topic + subscription.", "alternative": null, "cross_ref_pillars": ["operational-excellence"] },
+        { "id": "REL-F4", "title": "No safe change-management pattern for runtime/Lambda deploys", "severity": "Medium", "evidence": ["documentation/terraform/runtime/main.tf:10-13"], "impact": "A bad push replaces 100% of traffic immediately.", "recommendation": "Add Lambda aliases/traffic-shifting; document rollback.", "alternative": null, "cross_ref_pillars": ["operational-excellence"] },
+        { "id": "REL-F5", "title": "Retry backoff has no jitter", "severity": "Low", "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/retry.py:75"], "impact": "Correlated retry bursts possible.", "recommendation": "Add a jitter term.", "alternative": null, "cross_ref_pillars": [] },
+        { "id": "REL-F6", "title": "No documented/tested backup-restore procedure", "severity": "Low", "evidence": ["documentation/terraform/security/main.tf:74-76"], "impact": "Restore capability unverified.", "recommendation": "Add and exercise a restore runbook.", "alternative": null, "cross_ref_pillars": [] }
+      ],
+      "improvements": [
+        { "priority": "P1", "text": "Document RTO/RPO; decide DR posture (REL-F1)", "effort": "M" },
+        { "priority": "P1", "text": "Wire alarms to an SNS topic (REL-F3)", "effort": "S" },
+        { "priority": "P2", "text": "Add a dependency-failure circuit breaker (REL-F2)", "effort": "M" },
+        { "priority": "P2", "text": "Add Lambda aliases / rollback runbook (REL-F4)", "effort": "M" }
+      ],
+      "notes": "Coverage ~85%. Prior run (score 78) re-confirmed on REL-F1 but this run scores lower after finding additional gaps its simpler grid did not surface. The uncommitted ingestion/main.tf diff (sqs:GetQueueAttributes removal) was checked and confirmed unused/no reliability impact. No Critical finding; no capping applied." },
+
+    { "pillar": "performance-efficiency", "title": "Performance Efficiency", "applicable": true, "status": "ok", "score": 75, "maturity": 4, "coverage": 0.75, "confidence": "medium",
+      "criteria": [
+        { "id": "PERF-01", "statement": "Compute type right-sized & appropriate.", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/terraform/ingestion/main.tf:171-217", "documentation/scripts/agents/agent-technical-doc/docagent/analyzer.py:124-156"], "notes": "Serverless ARM64 + two-tier model escalation; Lambda memory hardcoded 256MB, no power-tuning evidence." },
+        { "id": "PERF-02", "statement": "Data store choice fits access patterns.", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/terraform/security/main.tf:57-79"], "notes": null },
+        { "id": "PERF-03", "statement": "Query/index design avoids N+1, full scans, hot partitions.", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/idempotency.py:22-74"], "notes": "All single-item ops, no scans." },
+        { "id": "PERF-04", "statement": "Caching used where beneficial.", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/scripts/lambdas/webhook-receiver/handler.py:30-137"], "notes": "In-process secret cache only; no CDN/DB cache/prompt caching." },
+        { "id": "PERF-05", "statement": "Async / batching for expensive or bursty work.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/scripts/lambdas/worker-dispatcher/handler.py:46-77"], "notes": null },
+        { "id": "PERF-06", "statement": "Timeouts, connection pooling, and payload sizes tuned.", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/github_client.py:58-64"], "notes": "GitHub client uses urllib per-call, no connection pooling." },
+        { "id": "PERF-07", "statement": "Concurrency/parallelism used where it helps.", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/committer.py:71-81"], "notes": "Local file reads/blob creation sequential." },
+        { "id": "PERF-08", "statement": "Content/data placed close to consumers.", "verdict": "N/A", "weight": 0.5, "evidence": [], "notes": "Not relevant — docs consumed via GitHub UI." },
+        { "id": "PERF-09", "statement": "Performance targets defined and measured.", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/metrics.py:18-49"], "notes": "Measured, no documented target/SLO/alarm." },
+        { "id": "PERF-10", "statement": "Load/perf testing or benchmarking evidence.", "verdict": "Missing", "weight": 0.5, "evidence": [], "notes": null },
+        { "id": "PERF-11", "statement": "Resource utilization monitored.", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/terraform/observability/main.tf:24-160"], "notes": "No Throttles/ConcurrentExecutions metric." },
+        { "id": "PERF-12", "statement": "Bounded resource use.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/config.py:55-68"], "notes": "Extensive caps everywhere." }
+      ],
+      "strengths": [
+        { "text": "Two-tier LLM model selection right-sizes inference cost/latency to repo complexity.", "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/analyzer.py:124-156"] },
+        { "text": "All DynamoDB access is single-item point operations, no scans, no hot-partition risk.", "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/idempotency.py:22-74"] }
+      ],
+      "findings": [
+        { "id": "PERF-F1", "title": "No performance target (SLO) defined for run latency, only measured", "severity": "Medium", "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/metrics.py:18-49"], "impact": "Latency regressions caught only by manual dashboard inspection.", "recommendation": "Define SLO and alarm on DurationMs p90.", "alternative": null, "cross_ref_pillars": ["operational-excellence"] },
+        { "id": "PERF-F2", "title": "Resource-utilization monitoring omits throttles/concurrency pressure", "severity": "Medium", "evidence": ["documentation/terraform/observability/main.tf:24-160"], "impact": "Worker concurrency saturation only inferable indirectly.", "recommendation": "Add Throttles/ConcurrentExecutions and DynamoDB throttle metrics.", "alternative": null, "cross_ref_pillars": ["operational-excellence", "scalability"] },
+        { "id": "PERF-F3", "title": "Sequential local file reads and Git blob creation", "severity": "Low", "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/committer.py:71-81"], "impact": "Bounded latency cost today, doesn't parallelize as caps grow.", "recommendation": "Parallelize with a bounded thread pool.", "alternative": null, "cross_ref_pillars": [] },
+        { "id": "PERF-F4", "title": "No HTTP connection pooling for the GitHub client", "severity": "Low", "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/github_client.py:58-69"], "impact": "Fresh TCP+TLS handshake per call.", "recommendation": "Use a pooled HTTP client.", "alternative": null, "cross_ref_pillars": [] },
+        { "id": "PERF-F5", "title": "No LLM prompt caching and no load/benchmark testing evidence", "severity": "Low", "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/analyzer.py:170-184"], "impact": "Static prompt resent in full every run; concurrent-burst behavior unverified.", "recommendation": "Enable Bedrock prompt caching; add a bounded-concurrency load test.", "alternative": null, "cross_ref_pillars": ["cost-optimization"] }
+      ],
+      "improvements": [
+        { "priority": "P1", "text": "Define latency SLO + alarm (PERF-F1)", "effort": "S" },
+        { "priority": "P1", "text": "Add throttle/concurrency metrics (PERF-F2)", "effort": "S" },
+        { "priority": "P2", "text": "Enable Bedrock prompt caching (PERF-F5)", "effort": "S" }
+      ],
+      "notes": "Coverage ~75%. No live AWS calls made. IAM grants dynamodb:Query no code path uses — confirmed access is point-lookup-only." },
+
+    { "pillar": "cost-optimization", "title": "Cost Optimization", "applicable": true, "status": "ok", "score": 82, "maturity": 4, "coverage": 0.90, "confidence": "high",
+      "criteria": [
+        { "id": "COST-01", "statement": "Pricing model fits usage.", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/terraform/security/main.tf:59", "documentation/terraform/ingestion/main.tf:175-206"], "notes": "Lambda on-demand, DynamoDB PAY_PER_REQUEST, serverless AgentCore." },
+        { "id": "COST-02", "statement": "No idle/over-provisioned resources.", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/terraform/ingestion/main.tf:178,206"], "notes": null },
+        { "id": "COST-03", "statement": "Scale-to-zero / auto-stop for non-prod & bursty workloads.", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/terraform/shared.tfvars:15-17"], "notes": "Single POC environment only." },
+        { "id": "COST-04", "statement": "Storage lifecycle policies.", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/terraform/ecr/main.tf:22-49", "documentation/terraform/ingestion/main.tf:9,17,160,165"], "notes": null },
+        { "id": "COST-05", "statement": "Cost allocation tags / attribution strategy.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/terraform/ingestion/providers.tf:24-29"], "notes": "default_tags across 6/7 modules." },
+        { "id": "COST-06", "statement": "Budgets/alerts or cost anomaly detection.", "verdict": "Missing", "weight": 1.0, "evidence": [], "notes": "No AWS Budgets or Cost Anomaly Detection resource anywhere." },
+        { "id": "COST-07", "statement": "Avoids expensive managed features when a cheaper fit exists.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/scripts/agents/agents.json:6-12"], "notes": "Haiku default, gated Sonnet escalation." },
+        { "id": "COST-08", "statement": "Data transfer costs considered.", "verdict": "Met", "weight": 1.0, "evidence": [], "notes": "No VPC/NAT Gateway anywhere." },
+        { "id": "COST-09", "statement": "Ephemeral/dev environments torn down or scheduled.", "verdict": "N/A", "weight": 0.5, "evidence": [], "notes": "No ephemeral/dev environment exists." },
+        { "id": "COST-10", "statement": "Observability cost bounded.", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/terraform/ingestion/main.tf:160,165"], "notes": "Retention bounded but no sampling." },
+        { "id": "COST-11", "statement": "Efficient resource use per unit of business value.", "verdict": "Met", "weight": 0.5, "evidence": ["documentation/scripts/lambdas/webhook-receiver/handler.py:50,173-255"], "notes": "Per-repo run quota bounds Bedrock spend at the source." }
+      ],
+      "strengths": [
+        { "text": "End-to-end pay-per-use pricing, no always-on compute.", "evidence": ["documentation/terraform/security/main.tf:59"] },
+        { "text": "Cost-aware LLM model selection with hard caps on files/bytes read.", "evidence": ["documentation/scripts/agents/agents.json:6-12"] }
+      ],
+      "findings": [
+        { "id": "COST-F1", "title": "No AWS Budgets or Cost Anomaly Detection configured", "severity": "Medium", "evidence": ["documentation/AUDIT.md:94"], "impact": "No proactive alert for cost spikes.", "recommendation": "Add aws_budgets_budget and/or Cost Anomaly Detection.", "alternative": { "summary": "Pure addition, no trade-off.", "pros": ["Zero infrastructure cost"], "cons": ["Requires an SNS topic for delivery"], "effort": "S", "cross_pillar_impact": ["operational-excellence"] }, "cross_ref_pillars": ["operational-excellence"] },
+        { "id": "COST-F2", "title": "Observability cost not structurally bounded by sampling", "severity": "Low", "evidence": ["documentation/terraform/runtime/logs.tf:12-30"], "impact": "Negligible at current volume; scales linearly with run volume.", "recommendation": "Add OTEL trace sampling if volume grows.", "alternative": null, "cross_ref_pillars": ["operational-excellence"] },
+        { "id": "COST-F3", "title": "No dedicated ephemeral/non-prod environment lifecycle", "severity": "Low", "evidence": ["documentation/terraform/shared.tfvars:15-17"], "impact": "Low risk today given single scale-to-zero environment.", "recommendation": "Document teardown approach if a second environment is added.", "alternative": null, "cross_ref_pillars": [] }
+      ],
+      "improvements": [
+        { "priority": "P1", "text": "Add AWS Budgets/Cost Anomaly Detection scoped to the project tag (COST-F1)", "effort": "S" },
+        { "priority": "P2", "text": "Add OTEL trace sampling if run volume grows (COST-F2)", "effort": "S" }
+      ],
+      "notes": "POC-scale single-environment deployment. Score recomputed independently; not directly comparable to the prior run's simplified 3-criterion grid (88/100)." },
+
+    { "pillar": "sustainability", "title": "Sustainability", "applicable": true, "status": "ok", "score": 80, "maturity": 4, "coverage": 0.90, "confidence": "high",
+      "criteria": [
+        { "id": "SUS-01", "statement": "High utilization; scale-to-zero.", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/terraform/runtime/data.tf:55-56"], "notes": "No always-on resources found repo-wide." },
+        { "id": "SUS-02", "statement": "Energy-efficient compute (ARM/Graviton, serverless).", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/terraform/ingestion/main.tf:170,197", "documentation/scripts/agents/agent-technical-doc/Dockerfile:1"], "notes": "Both Lambdas + container are ARM64." },
+        { "id": "SUS-03", "statement": "Managed services preferred over self-managed always-on infrastructure.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/terraform/ingestion/main.tf"], "notes": null },
+        { "id": "SUS-04", "statement": "Data minimization: retention/lifecycle limits.", "verdict": "Partial", "weight": 1.5, "evidence": ["documentation/terraform/bootstrap/main.tf:34-39"], "notes": "S3 state bucket versioning has no lifecycle expiry." },
+        { "id": "SUS-05", "statement": "Efficient algorithms/bounded processing.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/github_client.py:103-106"], "notes": "Bounded tarball fetch, not full clone." },
+        { "id": "SUS-06", "statement": "Batching/async to smooth utilization.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/terraform/ingestion/main.tf:222-229"], "notes": "Push-based SQS, not polling." },
+        { "id": "SUS-07", "statement": "Region choice considers sustainability where flexible.", "verdict": "Missing", "weight": 0.5, "evidence": ["documentation/terraform/shared.tfvars:15"], "notes": "eu-central-1 hardcoded, no documented rationale." },
+        { "id": "SUS-08", "statement": "Right-sized storage tiers.", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/terraform/security/main.tf:57-58"], "notes": "S3 state bucket lacks version-expiry lifecycle." },
+        { "id": "SUS-09", "statement": "Test/dev environments not left running idle.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/terraform/shared.tfvars"], "notes": "Single POC environment, inherently scale-to-zero." },
+        { "id": "SUS-10", "statement": "Observability/log volume proportionate.", "verdict": "Met", "weight": 0.5, "evidence": ["documentation/terraform/ingestion/variables.tf:65-69"], "notes": "14-day bounded retention." }
+      ],
+      "strengths": [
+        { "text": "Fully serverless, event-driven pipeline with no always-on compute.", "evidence": ["documentation/terraform/ingestion/main.tf"] },
+        { "text": "ARM64/Graviton used for 100% of custom compute.", "evidence": ["documentation/terraform/ingestion/main.tf:170,197"] }
+      ],
+      "findings": [
+        { "id": "SUS-F1", "title": "Terraform state S3 bucket versioning has no lifecycle expiry for noncurrent versions", "severity": "Low", "evidence": ["documentation/terraform/bootstrap/main.tf:34-39"], "impact": "Unbounded accumulation of state-object versions over time.", "recommendation": "Add lifecycle configuration expiring noncurrent versions after ~90 days.", "alternative": null, "cross_ref_pillars": ["cost_optimization"] },
+        { "id": "SUS-F2", "title": "Region choice has no documented sustainability rationale", "severity": "Low", "evidence": ["documentation/terraform/shared.tfvars:15"], "impact": "Low impact at current POC scale.", "recommendation": "Document trade-off if region is revisited.", "alternative": null, "cross_ref_pillars": [] },
+        { "id": "SUS-F3", "title": "Local E2E smoke-check script uses a while-True polling loop", "severity": "Info", "evidence": ["documentation/scripts/agents/agent-technical-doc/e2e/smoke_check.py:82-93"], "impact": "Confined to a manually-run local dev script, no production impact.", "recommendation": "No action needed.", "alternative": null, "cross_ref_pillars": [] }
+      ],
+      "improvements": [
+        { "priority": "P3", "text": "Add lifecycle expiry for noncurrent state bucket versions.", "effort": "S" },
+        { "priority": "P3", "text": "Document region-choice rationale.", "effort": "S" }
+      ],
+      "notes": "Serverless-by-default end-to-end, 100% ARM64 for custom compute, consistently bounded retention except the state bucket's version history. No Critical/High findings." },
+
+    { "pillar": "architecture", "title": "Architecture", "applicable": true, "status": "ok", "score": 98, "maturity": 5, "coverage": 0.90, "confidence": "high",
+      "criteria": [
+        { "id": "ARC-01", "statement": "Architectural style fits the problem and is justified.", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/ARCHITECTURE.md:9-90"], "notes": "Event-driven serverless fits the bursty, long-running-analysis webhook workload." },
+        { "id": "ARC-02", "statement": "Clear component boundaries with single, well-defined responsibilities.", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/scripts/lambdas/webhook-receiver/handler.py:1-14"], "notes": null },
+        { "id": "ARC-03", "statement": "Data flow & ownership are explicit.", "verdict": "Partial", "weight": 1.5, "evidence": ["documentation/terraform/security/main.tf:54-79"], "notes": "One DynamoDB table multiplexes 3 concerns via key-prefix convention." },
+        { "id": "ARC-04", "statement": "Integration patterns are appropriate.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/terraform/ingestion/main.tf:6-23,219-229"], "notes": null },
+        { "id": "ARC-05", "statement": "Consistency & idempotency strategy across boundaries is coherent.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/idempotency.py:22-75"], "notes": null },
+        { "id": "ARC-06", "statement": "Statelessness / state placement is deliberate.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/scripts/agents/agent-technical-doc/agent.py:17-18"], "notes": null },
+        { "id": "ARC-07", "statement": "Cross-cutting concerns handled consistently.", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/terraform/ingestion/main.tf:82-92"], "notes": "One authorization statement doesn't match actual access pattern." },
+        { "id": "ARC-08", "statement": "Design documented and matches the code.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/ARCHITECTURE.md:11-160"], "notes": "Cross-checked line-by-line, no discrepancy." },
+        { "id": "ARC-09", "statement": "No over-engineering / accidental complexity.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/retry.py:1-82"], "notes": null },
+        { "id": "ARC-10", "statement": "Failure domains & boundaries are intentional.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/scripts/lambdas/worker-dispatcher/handler.py:25-96"], "notes": null },
+        { "id": "ARC-11", "statement": "Technology choices are consistent and justified.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/terraform/runtime/main.tf:3"], "notes": null },
+        { "id": "ARC-12", "statement": "Extensibility: new capabilities fit without redesign.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/terraform/runtime/main.tf:3-6"], "notes": "New agents register via agents.json discovery." }
+      ],
+      "strengths": [
+        { "text": "Clean, single-direction event-driven pipeline with no backward coupling.", "evidence": ["documentation/scripts/lambdas/webhook-receiver/handler.py:217-265"] },
+        { "text": "Explicit, enforced least-authority boundary: webhook never holds the GitHub token.", "evidence": ["documentation/scripts/lambdas/webhook-receiver/handler.py:1-14"] }
+      ],
+      "findings": [
+        { "id": "ARC-F1", "title": "Dead/mismatched IAM statement for the rate-limit DynamoDB write path", "severity": "Low", "evidence": ["documentation/terraform/ingestion/main.tf:82-92"], "impact": "Policy models an access pattern that doesn't exist while the real pattern is granted elsewhere.", "recommendation": "Fix or remove the mismatched statement.", "alternative": null, "cross_ref_pillars": ["security"] },
+        { "id": "ARC-F2", "title": "Single DynamoDB table multiplexes three distinct data-ownership domains", "severity": "Info", "evidence": ["documentation/terraform/security/main.tf:54-79"], "impact": "Workable at current scale; risk if a fourth consumer is added.", "recommendation": "No immediate action; split if a fourth consumer appears.", "alternative": null, "cross_ref_pillars": ["modularity", "decoupling"] }
+      ],
+      "improvements": [
+        { "priority": "P3", "text": "Fix or remove the mismatched RateLimitQuery IAM statement (ARC-F1)", "effort": "S" }
+      ],
+      "notes": "ARCHITECTURE.md and design.md independently re-verified against code and all 7 Terraform modules — no material discrepancy. No Critical/High findings." },
+
+    { "pillar": "terraform", "title": "Terraform", "applicable": true, "status": "ok", "score": 77, "maturity": 4, "coverage": 0.90, "confidence": "high",
+      "criteria": [
+        { "id": "TF-01", "statement": "Standard module layout, composable modules.", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/terraform/ingestion/main.tf"], "notes": null },
+        { "id": "TF-02", "statement": "Remote state with locking; state not committed; sensible segmentation.", "verdict": "Partial", "weight": 2.0, "evidence": ["documentation/terraform/ingestion/providers.tf:12-17"], "notes": "No dynamodb_table or use_lockfile configured in any of the 6 S3 backends -> no locking." },
+        { "id": "TF-03", "statement": "Provider & Terraform version constraints pinned; lock file committed.", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/terraform/ingestion/providers.tf:1-10"], "notes": "Lock files present in all 7 modules." },
+        { "id": "TF-04", "statement": "Variables typed, described, validated; sane defaults.", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/terraform/ingestion/variables.tf:1-70"], "notes": "Zero validation{} blocks repo-wide." },
+        { "id": "TF-05", "statement": "Outputs documented; secrets marked sensitive.", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/terraform/security/main.tf:82-105"], "notes": "2 undocumented outputs (minor)." },
+        { "id": "TF-06", "statement": "terraform fmt clean & validate passes.", "verdict": "Partial", "weight": 1.0, "evidence": ["_context/scans/terraform-fmt.txt"], "notes": "6/7 modules fmt-clean; validate not run this session." },
+        { "id": "TF-07", "statement": "No hardcoded account ids/regions/ARNs where variables fit.", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/terraform/ingestion/providers.tf:16"], "notes": "Account ID hardcoded in 6 backend blocks (Terraform language limitation)." },
+        { "id": "TF-08", "statement": "DRY via modules/for_each.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/terraform/runtime/logs.tf:4-80"], "notes": null },
+        { "id": "TF-09", "statement": "count/for_each used correctly.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/terraform/runtime/main.tf:4"], "notes": "Zero bare count usage anywhere." },
+        { "id": "TF-10", "statement": "Explicit dependencies where needed.", "verdict": "Met", "weight": 0.5, "evidence": ["documentation/terraform/ingestion/main.tf:196,216"], "notes": null },
+        { "id": "TF-11", "statement": "lifecycle/prevent_destroy/ignore_changes used deliberately.", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/terraform/security/main.tf:34-36,49-51"], "notes": "prevent_destroy absent on state bucket/DynamoDB/secrets." },
+        { "id": "TF-12", "statement": "Tagging via default_tags; consistent naming.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/terraform/ecr/providers.tf:19-25"], "notes": null },
+        { "id": "TF-13", "statement": "Least-privilege provider assume-role.", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/terraform/ingestion/providers.tf:20-28"], "notes": "No static credentials, but no explicit assume_role block in provider config." },
+        { "id": "TF-14", "statement": "CI checks for IaC if a pipeline exists.", "verdict": "N/A", "weight": 0.5, "evidence": [], "notes": "No CI pipeline exists." }
+      ],
+      "strengths": [
+        { "text": "Consistent per-module layout with isolated S3-backed state, chained via terraform_remote_state.", "evidence": ["documentation/terraform/roles/data.tf:3-19"] },
+        { "text": "All 7 modules have committed, hash-pinned lock files.", "evidence": ["documentation/terraform/ingestion/.terraform.lock.hcl:1-5"] }
+      ],
+      "findings": [
+        { "id": "TF-F1", "title": "No state locking configured on any S3 backend", "severity": "High", "evidence": ["documentation/terraform/ingestion/providers.tf:12-17"], "impact": "All 6 S3-backed modules can suffer concurrent-apply state corruption; deployment is manual/local with no CI gate.", "recommendation": "Add use_lockfile=true (S3 native locking, Terraform >=1.10) to all 6 backend blocks.", "alternative": { "summary": "use_lockfile=true vs. shared DynamoDB lock table.", "pros": ["A: no new resource", "B: works on older Terraform CLI"], "cons": ["A: needs re-init, not honored by CLI <1.10", "B: extra resource to manage"], "effort": "S", "cross_pillar_impact": ["reliability", "operational-excellence"] }, "cross_ref_pillars": ["reliability"] },
+        { "id": "TF-F2", "title": "terraform fmt not clean (cosmetic alignment diff in ingestion/main.tf)", "severity": "Medium", "evidence": ["_context/scans/terraform-fmt.txt"], "impact": "Purely cosmetic, signals no fmt gate in the workflow.", "recommendation": "Run terraform fmt -recursive and commit.", "alternative": null, "cross_ref_pillars": [] },
+        { "id": "TF-F3", "title": "No CI pipeline for IaC checks; fully manual local deployment", "severity": "Medium", "evidence": ["_context/inventory.md section 5"], "impact": "No automated fmt/validate/plan/lint gate.", "recommendation": "Add a minimal CI workflow.", "alternative": null, "cross_ref_pillars": ["operational-excellence"] },
+        { "id": "TF-F4", "title": "No validation blocks on any variable", "severity": "Low", "evidence": ["documentation/terraform/security/variables.tf:11-14"], "impact": "Malformed vars surface only as late apply-time errors.", "recommendation": "Add validation blocks to high-value variables.", "alternative": null, "cross_ref_pillars": [] },
+        { "id": "TF-F5", "title": "No prevent_destroy on stateful/critical resources", "severity": "Low", "evidence": ["documentation/terraform/bootstrap/main.tf:31-33"], "impact": "No Terraform-level safety net against accidental destroy.", "recommendation": "Add lifecycle { prevent_destroy = true } to critical resources.", "alternative": null, "cross_ref_pillars": [] }
+      ],
+      "improvements": [
+        { "priority": "P1", "text": "Add S3 native locking or a DynamoDB lock table to all 6 backends (TF-F1)", "effort": "S" },
+        { "priority": "P2", "text": "Run terraform fmt -recursive and commit (TF-F2)", "effort": "XS" },
+        { "priority": "P2", "text": "Stand up a minimal CI workflow (TF-F3)", "effort": "M" },
+        { "priority": "P3", "text": "Add prevent_destroy to critical resources (TF-F5)", "effort": "XS" }
+      ],
+      "notes": "terraform validate not executed this session. Prior audit's 'manual/hard-coded deployment' finding re-verified and split into account-ID hardcoding (Partial, language limitation) and the more material state-locking gap (newly identified as High)." },
+
+    { "pillar": "modularity", "title": "Modularity", "applicable": true, "status": "ok", "score": 81, "maturity": 4, "coverage": 0.90, "confidence": "high",
+      "criteria": [
+        { "id": "MOD-01", "statement": "High cohesion: each module has one clear responsibility.", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/paths.py:1-8"], "notes": "18 domain-named modules." },
+        { "id": "MOD-02", "statement": "Clear, documented public interfaces; internals encapsulated.", "verdict": "Partial", "weight": 1.5, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/__init__.py:10-19"], "notes": "__all__ stale/incomplete." },
+        { "id": "MOD-03", "statement": "Boundaries by domain/feature.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/github_auth.py:1-21"], "notes": null },
+        { "id": "MOD-04", "statement": "Low duplication (DRY).", "verdict": "Partial", "weight": 1.5, "evidence": ["documentation/scripts/lambdas/webhook-receiver/handler.py:140-163", "documentation/scripts/agents/agent-technical-doc/docagent/idempotency.py:22-52"], "notes": "Idempotency and HTTP transport logic each duplicated across two modules." },
+        { "id": "MOD-05", "statement": "No god modules; sizes reasonable.", "verdict": "Met", "weight": 1.0, "evidence": ["wc -l documentation/scripts/agents/agent-technical-doc/docagent/*.py"], "notes": "Max 270 lines." },
+        { "id": "MOD-06", "statement": "Dependency direction is sane; no cycles.", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/orchestrator.py:34-91"], "notes": null },
+        { "id": "MOD-07", "statement": "Reusable units are genuinely reusable.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/retry.py:53-61"], "notes": null },
+        { "id": "MOD-08", "statement": "Consistent, discoverable module organization.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/"], "notes": null },
+        { "id": "MOD-09", "statement": "Clear separation of concerns.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/doc_builder.py:1-8"], "notes": null },
+        { "id": "MOD-10", "statement": "Public surface is minimal.", "verdict": "Partial", "weight": 0.5, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/__init__.py:10-19"], "notes": "Stale __all__ undermines declared surface." }
+      ],
+      "strengths": [
+        { "text": "Clean, acyclic intra-package dependency graph with dependency inversion via OrchestratorDeps.", "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/orchestrator.py:34-91"] },
+        { "text": "No god modules: largest module is 270 lines.", "evidence": ["wc -l documentation/scripts/agents/agent-technical-doc/docagent/*.py"] }
+      ],
+      "findings": [
+        { "id": "MOD-F1", "title": "Idempotency claim logic duplicated between webhook Lambda and docagent", "severity": "Medium", "evidence": ["documentation/scripts/lambdas/webhook-receiver/handler.py:140-163", "documentation/scripts/agents/agent-technical-doc/docagent/idempotency.py:22-52"], "impact": "Two independent implementations of the same DynamoDB idempotency contract; schema change to one could silently break the other.", "recommendation": "Factor into a shared helper or document the schema-parity requirement.", "alternative": { "summary": "Extract a shared idempotency helper, shipped as a Lambda Layer + container dependency.", "pros": ["Single source of truth"], "cons": ["Adds a build/packaging step; no CI exists yet"], "effort": "M", "cross_pillar_impact": ["terraform", "operational-excellence"] }, "cross_ref_pillars": ["terraform", "operational-excellence"] },
+        { "id": "MOD-F2", "title": "HTTP transport logic duplicated between github_auth.py and github_client.py", "severity": "Low", "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/github_auth.py:41-54"], "impact": "Near-identical urllib boilerplate in two modules.", "recommendation": "Extract a shared low-level request helper.", "alternative": null, "cross_ref_pillars": [] },
+        { "id": "MOD-F3", "title": "docagent/__init__.py public surface (__all__) is stale", "severity": "Low", "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/__init__.py:10-19"], "impact": "Declared public surface is decorative and misleading.", "recommendation": "Update or drop __all__.", "alternative": null, "cross_ref_pillars": [] }
+      ],
+      "improvements": [
+        { "priority": "P1", "text": "Deduplicate idempotency logic (MOD-F1)", "effort": "M" },
+        { "priority": "P2", "text": "Extract shared HTTP transport helper (MOD-F2)", "effort": "S" },
+        { "priority": "P3", "text": "Refresh stale __all__ (MOD-F3)", "effort": "S" }
+      ],
+      "notes": "Line counts for all 18 docagent/*.py modules measured directly via wc -l. Slightly lower than the prior run (85) due to two concretely-evidenced duplication findings not previously quantified." },
+
+    { "pillar": "decoupling", "title": "Decoupling", "applicable": true, "status": "ok", "score": 87, "maturity": 4, "coverage": 0.75, "confidence": "medium",
+      "criteria": [
+        { "id": "DEC-01", "statement": "Components communicate via stable contracts.", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/payload.py:26-58"], "notes": null },
+        { "id": "DEC-02", "statement": "Async decoupling where synchronous coupling is risky.", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/terraform/ingestion/main.tf:6-23,219-229"], "notes": "InvokeAgentRuntime call is genuinely fire-and-forget." },
+        { "id": "DEC-03", "statement": "Dependency inversion.", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/orchestrator.py:34-91"], "notes": null },
+        { "id": "DEC-04", "statement": "No shared mutable state / shared database as hidden bus.", "verdict": "Partial", "weight": 1.5, "evidence": ["documentation/terraform/security/main.tf:57-58"], "notes": "One DynamoDB table shared by webhook and agent, namespaced by convention only." },
+        { "id": "DEC-05", "statement": "Config & secrets injected.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/config.py:12-96"], "notes": null },
+        { "id": "DEC-06", "statement": "Failure isolation.", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/scripts/lambdas/worker-dispatcher/handler.py:25-33,71-95"], "notes": null },
+        { "id": "DEC-07", "statement": "Versioned/back-compatible contracts.", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/payload.py:65-94"], "notes": "Tolerant-reader pattern but no schema_version field." },
+        { "id": "DEC-08", "statement": "Independent deployability.", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/terraform/ingestion/main.tf:122-131"], "notes": "Terraform apply order is a strict, precondition-enforced chain." },
+        { "id": "DEC-09", "statement": "Temporal decoupling (buffering).", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/terraform/ingestion/main.tf:6-23"], "notes": null },
+        { "id": "DEC-10", "statement": "No circular runtime dependencies.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/terraform/roles/data.tf:1-27"], "notes": "Clean acyclic module chain." }
+      ],
+      "strengths": [
+        { "text": "SQS main+DLQ decouples webhook ingress from worker processing.", "evidence": ["documentation/terraform/ingestion/main.tf:6-23"] },
+        { "text": "The worker's InvokeAgentRuntime call is genuinely fire-and-forget.", "evidence": ["documentation/scripts/agents/agent-technical-doc/agent.py:19-31,52-98"] }
+      ],
+      "findings": [
+        { "id": "DEC-F1", "title": "Shared DynamoDB table used as cross-component state store with no documented key-schema contract", "severity": "Medium", "evidence": ["documentation/terraform/security/main.tf:57-58"], "impact": "A key-format change in either component could silently corrupt the other's records.", "recommendation": "Document the shared key-schema contract, or split into two dedicated tables.", "alternative": { "summary": "Two dedicated DynamoDB tables, one per concern.", "pros": ["Clear ownership", "Smaller blast radius"], "cons": ["One more resource to manage"], "effort": "S", "cross_pillar_impact": ["security", "modularity"] }, "cross_ref_pillars": ["security", "modularity"] },
+        { "id": "DEC-F2", "title": "No explicit contract versioning on the webhook->SQS->worker->AgentCore payload", "severity": "Low", "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/payload.py:26-58"], "impact": "A breaking rename could fail silently rather than being caught by a version check.", "recommendation": "Add a schema_version field and a consumer-contract test.", "alternative": null, "cross_ref_pillars": [] },
+        { "id": "DEC-F3", "title": "Terraform module chain is a fixed, deploy-time-coupled sequence", "severity": "Low", "evidence": ["documentation/terraform/ingestion/main.tf:122-131"], "impact": "Must be applied in exactly one order, no CI to catch ordering regressions.", "recommendation": "Keep deploy-order documentation current.", "alternative": null, "cross_ref_pillars": ["architecture"] },
+        { "id": "DEC-F4", "title": "Retry wrapping covers only the Bedrock analyze() call, not GitHub API calls", "severity": "Info", "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/orchestrator.py:67-77"], "impact": "A transient GitHub 5xx fails the whole run, though the outer handler guarantees a failure comment.", "recommendation": "Wrap idempotent GitHub read calls with retry_call.", "alternative": null, "cross_ref_pillars": ["reliability"] }
+      ],
+      "improvements": [
+        { "priority": "P1", "text": "Document/split the shared DynamoDB table's key-schema contract (DEC-F1)", "effort": "S" },
+        { "priority": "P2", "text": "Add schema_version to the pipeline payload (DEC-F2)", "effort": "S" }
+      ],
+      "notes": "Score coincidentally matches the prior run (87) but rests on independently re-derived, full 10-criteria evidence. No Critical/High findings." },
+
+    { "pillar": "scalability", "title": "Scalability", "applicable": true, "status": "ok", "score": 73, "maturity": 3, "coverage": 0.90, "confidence": "medium",
+      "criteria": [
+        { "id": "SCAL-01", "statement": "Stateless compute enabling horizontal scale-out.", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/scripts/agents/agent-technical-doc/agent.py:17-18"], "notes": null },
+        { "id": "SCAL-02", "statement": "Auto-scaling / on-demand elasticity.", "verdict": "Partial", "weight": 1.5, "evidence": ["documentation/terraform/ingestion/variables.tf:53-57"], "notes": "Worker concurrency capped at a static value, not auto-scaled." },
+        { "id": "SCAL-03", "statement": "Data layer scales.", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/terraform/security/main.tf:57-79"], "notes": null },
+        { "id": "SCAL-04", "statement": "No single-threaded/singleton bottleneck on the hot path.", "verdict": "Partial", "weight": 1.5, "evidence": ["documentation/terraform/ingestion/main.tf:220-229"], "notes": "worker_max_concurrency=5 is a single system-wide budget shared by all repos." },
+        { "id": "SCAL-05", "statement": "Back-pressure / rate limiting / queue buffering under surge.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/terraform/ingestion/main.tf:6-23,252-261"], "notes": null },
+        { "id": "SCAL-06", "statement": "Partition keys avoid hot spots.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/idempotency.py:1-4"], "notes": null },
+        { "id": "SCAL-07", "statement": "Statelessness of sessions.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/scripts/agents/agent-technical-doc/agent.py:17-18"], "notes": null },
+        { "id": "SCAL-08", "statement": "Concurrency limits & downstream protection.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/terraform/ingestion/main.tf:226-228"], "notes": null },
+        { "id": "SCAL-09", "statement": "Scaling limits/quotas understood and headroom exists.", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/AUDIT.md:22"], "notes": "Bedrock quota acknowledged only qualitatively; no throttle/backlog alarms." },
+        { "id": "SCAL-10", "statement": "Load tested / capacity model.", "verdict": "Missing", "weight": 0.5, "evidence": [], "notes": null },
+        { "id": "SCAL-11", "statement": "No unbounded in-memory growth.", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/orchestrator.py:216"], "notes": "Temp clone workdir never explicitly removed." }
+      ],
+      "strengths": [
+        { "text": "SQS + DLQ decoupling with per-repo sliding-window rate limiting.", "evidence": ["documentation/terraform/ingestion/main.tf:6-23"] },
+        { "text": "DynamoDB idempotency table uses on-demand capacity with a high-cardinality partition key.", "evidence": ["documentation/terraform/security/main.tf:57-65"] }
+      ],
+      "findings": [
+        { "id": "SCAL-F1", "title": "Worker concurrency hard-capped at 5, shared across all repos/PRs", "severity": "Medium", "evidence": ["documentation/terraform/ingestion/variables.tf:53-57"], "impact": "Under growth, sustained bursts risk exhausting max_receive_count before enough retries occur.", "recommendation": "Document relationship to Bedrock/AgentCore quotas; add a backlog-age alarm.", "alternative": { "summary": "Raise maximum_concurrency under load testing, or shard by repo/org.", "pros": ["Removes single global throttle point"], "cons": ["Sharding adds complexity", "Higher concurrency raises Bedrock spend"], "effort": "S/M", "cross_pillar_impact": ["cost-optimization", "reliability"] }, "cross_ref_pillars": ["cost-optimization", "reliability"] },
+        { "id": "SCAL-F2", "title": "No monitoring of scaling headroom", "severity": "Medium", "evidence": ["documentation/terraform/observability/main.tf:24-69"], "impact": "No early warning before hitting concurrency limits or growing SQS backlog.", "recommendation": "Add throttle/concurrency/backlog-age alarms.", "alternative": null, "cross_ref_pillars": ["operational-excellence", "reliability"] },
+        { "id": "SCAL-F3", "title": "No load testing or capacity model beyond current usage", "severity": "Low", "evidence": ["documentation/scripts/agents/agent-technical-doc/e2e/"], "impact": "Behavior under concurrent bursts unverified.", "recommendation": "Run a synthetic load test before widening usage.", "alternative": null, "cross_ref_pillars": ["performance-efficiency"] },
+        { "id": "SCAL-F4", "title": "Per-run temp working directory never explicitly cleaned up", "severity": "Low", "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/orchestrator.py:216"], "impact": "Risk of disk exhaustion under sustained throughput if compute is warm-reused.", "recommendation": "Use TemporaryDirectory context manager or explicit cleanup.", "alternative": null, "cross_ref_pillars": ["reliability"] }
+      ],
+      "improvements": [
+        { "priority": "P1", "text": "Add throttle/concurrency/backlog alarms (SCAL-F2)", "effort": "S" },
+        { "priority": "P2", "text": "Validate/raise worker_max_concurrency against measured capacity (SCAL-F1)", "effort": "S" },
+        { "priority": "P3", "text": "Run a synthetic end-to-end load test (SCAL-F3)", "effort": "M" }
+      ],
+      "notes": "live_aws OFF: actual AWS quotas not verified live. Prior run (79/100, informal 3-criterion grid) independently re-verified; this run's full 11-criterion grid yields 73/100." },
+
+    { "pillar": "maintainability", "title": "Maintainability", "applicable": true, "status": "ok", "score": 67, "maturity": 3, "coverage": 0.90, "confidence": "high",
+      "criteria": [
+        { "id": "MNT-01", "statement": "Automated tests exist with meaningful coverage of core logic.", "verdict": "Partial", "weight": 2.0, "evidence": ["documentation/scripts/agents/agent-technical-doc/tests/", "documentation/scripts/lambdas/tests/"], "notes": "107 passed/1 skipped and 20 passed, verified by execution; analyzer.py core parsing has zero tests." },
+        { "id": "MNT-02", "statement": "Code is readable.", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/retry.py:1-82"], "notes": null },
+        { "id": "MNT-03", "statement": "Linter/formatter configured and enforced.", "verdict": "Missing", "weight": 1.0, "evidence": [], "notes": "No pyproject.toml/.flake8/ruff.toml/etc. found; no CI." },
+        { "id": "MNT-04", "statement": "Documentation present & current.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/README.md:1-227"], "notes": "Verified current against actual code/structure." },
+        { "id": "MNT-05", "statement": "Low complexity.", "verdict": "Partial", "weight": 1.5, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/orchestrator.py:153-270"], "notes": "Two ~85-120 line multi-responsibility functions." },
+        { "id": "MNT-06", "statement": "Dependencies pinned, maintained.", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/scripts/agents/agent-technical-doc/requirements.txt:1-9"], "notes": "Version floors only, no lock file." },
+        { "id": "MNT-07", "statement": "Errors handled explicitly & consistently.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/orchestrator.py:190-202,249-266"], "notes": null },
+        { "id": "MNT-08", "statement": "Low duplication; changes localized.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/scripts/lambdas/webhook-receiver/handler.py:140-163"], "notes": "Only one minor deployment-boundary-justified duplication." },
+        { "id": "MNT-09", "statement": "Consistent project conventions.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/README.md:14-43"], "notes": null },
+        { "id": "MNT-10", "statement": "No dead code / TODO rot.", "verdict": "Partial", "weight": 0.5, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/__init__.py:10-18"], "notes": "No dead code, but stale __all__ export list." },
+        { "id": "MNT-11", "statement": "Tests are fast/deterministic and runnable locally & in CI.", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/scripts/agents/agent-technical-doc/tests/"], "notes": "Fast/deterministic/local verified directly; no CI exists." },
+        { "id": "MNT-12", "statement": "Type safety / static analysis leveraged.", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/config.py:55-68"], "notes": "Type hints near-universal, but no static type checker configured/run." }
+      ],
+      "strengths": [
+        { "text": "Full pytest suite actually runs, fast and deterministic, no network calls.", "evidence": ["documentation/scripts/agents/agent-technical-doc/tests/"] },
+        { "text": "Dependency-injection design makes core orchestration fully unit-testable.", "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/orchestrator.py:34-91"] }
+      ],
+      "findings": [
+        { "id": "MNT-F1", "title": "No linter, formatter, or type checker configured or enforced anywhere", "severity": "Medium", "evidence": [], "impact": "Style/typo/type-correctness drift caught only by human review.", "recommendation": "Add ruff + mypy/pyright with a minimal pyproject.toml config.", "alternative": { "summary": "Adopt ruff check + format + mypy on docagent/ first.", "pros": ["Low effort", "Fast"], "cons": ["Doesn't cover Lambda handlers or Terraform initially"], "effort": "S", "cross_pillar_impact": ["operational-excellence"] }, "cross_ref_pillars": [] },
+        { "id": "MNT-F2", "title": "No CI pipeline exists; tests and formatting never enforced automatically", "severity": "Medium", "evidence": ["documentation/README.md:159"], "impact": "129 passing tests are a snapshot of developer diligence, not a guarantee.", "recommendation": "Add a GitHub Actions workflow running pytest, ruff, terraform fmt -check on every PR.", "alternative": { "summary": "Minimal single-job GitHub Actions workflow.", "pros": ["Cheap", "Fast (~1 min)"], "cons": ["Doesn't cover Terraform validate/plan"], "effort": "S", "cross_pillar_impact": ["operational-excellence", "reliability"] }, "cross_ref_pillars": ["operational-excellence"] },
+        { "id": "MNT-F3", "title": "Core LLM-analysis module (analyzer.py) has zero test coverage", "severity": "Medium", "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/analyzer.py:104-121,124-156"], "impact": "_extract_json is a single point of failure for translating LLM output; unverified edge cases.", "recommendation": "Add tests/test_analyzer.py covering _extract_json and select_model.", "alternative": { "summary": "Unit-test the two pure functions directly.", "pros": ["Effort S", "No mocking needed"], "cons": ["BedrockAnalyzer wiring remains untested"], "effort": "S", "cross_pillar_impact": ["reliability"] }, "cross_ref_pillars": ["reliability"] },
+        { "id": "MNT-F4", "title": "docagent/__init__.py __all__ is stale", "severity": "Low", "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/__init__.py:10-18"], "impact": "Cosmetic drift only.", "recommendation": "Update or drop __all__.", "alternative": null, "cross_ref_pillars": [] },
+        { "id": "MNT-F5", "title": "Dependencies are version-floored, not pinned or lock-filed", "severity": "Low", "evidence": ["documentation/scripts/agents/agent-technical-doc/requirements.txt:1-9"], "impact": "Builds not reproducible; a fresh install can silently pull a newer dependency version.", "recommendation": "Generate exact-pinned lock files (pip-compile); enable Dependabot/Renovate.", "alternative": { "summary": "Adopt pip-tools' pip-compile.", "pros": ["Reproducible builds"], "cons": ["Adds a regeneration step"], "effort": "S", "cross_pillar_impact": ["security"] }, "cross_ref_pillars": ["security"] }
+      ],
+      "improvements": [
+        { "priority": "P1", "text": "Add a CI workflow running pytest + ruff + terraform fmt -check (MNT-F2)", "effort": "S" },
+        { "priority": "P1", "text": "Add ruff and mypy/pyright config (MNT-F1)", "effort": "S" },
+        { "priority": "P2", "text": "Add tests/test_analyzer.py for _extract_json and select_model (MNT-F3)", "effort": "S" },
+        { "priority": "P2", "text": "Generate a pinned/hash-locked dependency file (MNT-F5)", "effort": "S" }
+      ],
+      "notes": "Both test suites were actually executed (read-only, no installs): 107 passed/1 skipped (agent, 0.15s) and 20 passed (lambdas, 0.11s). No coverage.py configured — folded into MNT-01's Partial verdict. Score (67) differs from the prior run (83) mainly because the two highest-weighted criteria (MNT-01, MNT-05) landed Partial and MNT-03 was fully Missing on direct verification — a rubric/weighting effect, not underlying-fact disagreement." }
+  ],
+  "roadmap": [
+    { "priority": "P1", "type": "quick_win", "pillar": "terraform", "finding_id": "TF-F1", "action": "Add S3 native locking (use_lockfile=true) or a shared DynamoDB lock table to all 6 S3 backends", "effort": "S" },
+    { "priority": "P1", "type": "quick_win", "pillar": "operational-excellence", "finding_id": "OPS-F2", "action": "Provision an SNS topic + subscription and wire it as the default alarm_actions for all CloudWatch alarms", "effort": "S" },
+    { "priority": "P1", "type": "quick_win", "pillar": "security", "finding_id": "SEC-F3", "action": "Enable a baseline CloudTrail trail with metric filters/alarms on IAM and Secrets Manager activity", "effort": "S" },
+    { "priority": "P1", "type": "quick_win", "pillar": "security", "finding_id": "SEC-F1", "action": "Attach AWS WAFv2 to the public webhook API Gateway stage", "effort": "S" },
+    { "priority": "P1", "type": "quick_win", "pillar": "cost-optimization", "finding_id": "COST-F1", "action": "Add AWS Budgets / Cost Anomaly Detection scoped to the project's cost-allocation tag", "effort": "S" },
+    { "priority": "P1", "type": "quick_win", "pillar": "maintainability", "finding_id": "MNT-F1", "action": "Add ruff + mypy/pyright configuration", "effort": "S" },
+    { "priority": "P1", "type": "structural", "pillar": "operational-excellence", "finding_id": "OPS-F1", "action": "Stand up a minimal CI/CD pipeline (fmt/validate/pytest/ruff on PR, gated apply on merge)", "effort": "M" },
+    { "priority": "P1", "type": "structural", "pillar": "reliability", "finding_id": "REL-F1", "action": "Document an explicit RTO/RPO; decide DR posture for the mono-region deployment", "effort": "L" },
+    { "priority": "P2", "type": "quick_win", "pillar": "performance-efficiency", "finding_id": "PERF-F1", "action": "Define a latency SLO and alarm on the existing DurationMs p90 EMF metric", "effort": "S" },
+    { "priority": "P2", "type": "quick_win", "pillar": "scalability", "finding_id": "SCAL-F2", "action": "Add Lambda throttle/concurrency and SQS backlog-age alarms", "effort": "S" },
+    { "priority": "P2", "type": "quick_win", "pillar": "security", "finding_id": "SEC-F4", "action": "Scope the Bedrock InvokeModel IAM resource to the two configured model ARNs", "effort": "S" },
+    { "priority": "P2", "type": "quick_win", "pillar": "architecture", "finding_id": "ARC-F1", "action": "Fix the mismatched RateLimitQuery IAM statement", "effort": "S" },
+    { "priority": "P2", "type": "quick_win", "pillar": "maintainability", "finding_id": "MNT-F5", "action": "Pin Python dependencies with a lock file (pip-compile); enable Dependabot", "effort": "S" },
+    { "priority": "P2", "type": "structural", "pillar": "reliability", "finding_id": "REL-F2", "action": "Add a dependency-failure circuit breaker/cooldown", "effort": "M" },
+    { "priority": "P2", "type": "structural", "pillar": "reliability", "finding_id": "REL-F4", "action": "Add Lambda aliases / documented rollback-to-last-good-digest runbook", "effort": "M" },
+    { "priority": "P2", "type": "structural", "pillar": "modularity", "finding_id": "MOD-F1", "action": "Deduplicate the DynamoDB idempotency logic shared between webhook Lambda and docagent", "effort": "M" },
+    { "priority": "P3", "type": "quick_win", "pillar": "terraform", "finding_id": "TF-F2", "action": "Run terraform fmt -recursive and commit the alignment fix", "effort": "S" },
+    { "priority": "P3", "type": "quick_win", "pillar": "decoupling", "finding_id": "DEC-F1", "action": "Document or split the shared DynamoDB table's key-schema contract", "effort": "S" },
+    { "priority": "P3", "type": "structural", "pillar": "scalability", "finding_id": "SCAL-F3", "action": "Run an end-to-end synthetic load test before widening the repo allowlist", "effort": "M" },
+    { "priority": "P3", "type": "structural", "pillar": "security", "finding_id": "SEC-F2", "action": "Reintroduce customer-managed KMS keys once the account-level kms:CreateKey deny is lifted", "effort": "M" }
+  ]
+}

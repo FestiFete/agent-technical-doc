@@ -1,0 +1,29 @@
+ingestion/main.tf
+--- old/ingestion/main.tf
++++ new/ingestion/main.tf
+@@ -80,9 +80,9 @@
+         Resource = local.idempotency_table_arn
+       },
+       {
+-        Sid    = "RateLimitQuery"
+-        Effect = "Allow"
+-        Action = ["dynamodb:Query"]
++        Sid      = "RateLimitQuery"
++        Effect   = "Allow"
++        Action   = ["dynamodb:Query"]
+         Resource = local.idempotency_table_arn
+         Condition = {
+           StringEquals = {
+@@ -142,9 +142,9 @@
+         Resource = aws_sqs_queue.main.arn
+       },
+       {
+-        Sid    = "InvokeRuntimeScoped"
+-        Effect = "Allow"
+-        Action = ["bedrock-agentcore:InvokeAgentRuntime"]
++        Sid      = "InvokeRuntimeScoped"
++        Effect   = "Allow"
++        Action   = ["bedrock-agentcore:InvokeAgentRuntime"]
+         Resource = local.runtime_arn
+       }
+       # Statement KMS retiré : SSE-SQS (POC sans CMK).
