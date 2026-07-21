@@ -145,11 +145,7 @@ resource "aws_iam_role_policy" "worker" {
         Sid    = "InvokeRuntimeScoped"
         Effect = "Allow"
         Action = ["bedrock-agentcore:InvokeAgentRuntime"]
-        # Scopé à l'ARN du runtime doc-agent (+ ses endpoints).
-        Resource = [
-          local.runtime_arn,
-          "${local.runtime_arn}/runtime-endpoint/*"
-        ]
+        Resource = local.runtime_arn
       }
       # Statement KMS retiré : SSE-SQS (POC sans CMK).
     ]
