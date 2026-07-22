@@ -1,0 +1,66 @@
+{
+  "target": "/Users/g.mirambeau/Development/AWS/agent-technical-doc",
+  "timestamp_utc": "20260721-154651",
+  "mode": "static",
+  "scope": "security-only (user-requested focused re-run, not the full 12-pillar audit)",
+  "prior_full_audit": "audit/20260721-133806/",
+  "weights": { "security": 1.5 },
+  "global": {
+    "score": 81,
+    "maturity_uncapped": 4,
+    "maturity": 4,
+    "capped": false,
+    "capping_findings": []
+  },
+  "pillars": [
+    { "pillar": "security", "title": "Security", "applicable": true, "status": "ok", "score": 81, "maturity": 4, "coverage": 0.95, "confidence": "high",
+      "criteria": [
+        { "id": "SEC-01", "statement": "Least-privilege IAM (no wildcard * actions/resources without justification).", "verdict": "Partial", "weight": 2.0, "evidence": ["documentation/terraform/ingestion/main.tf:64-153", "documentation/terraform/roles/main.tf:42-49"], "notes": "Webhook/worker roles well-scoped with conditions; Bedrock InvokeModel Resource broader than the two models actually configured (SEC-F4)." },
+        { "id": "SEC-02", "statement": "No long-lived credentials/secrets in code or state; use of Secrets Manager/SSM/roles.", "verdict": "Met", "weight": 2.0, "evidence": ["documentation/terraform/security/main.tf:26-37,45-52", "documentation/scripts/agents/agent-technical-doc/docagent/github_auth.py:87-151"], "notes": "GitHub App short-lived tokens preferred; Secrets Manager values set out-of-band with ignore_changes." },
+        { "id": "SEC-03", "statement": "Encryption at rest on all data stores.", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/terraform/ingestion/main.tf:8,14", "documentation/terraform/bootstrap/main.tf:43-51", "documentation/terraform/ecr/main.tf:13-15", "documentation/terraform/security/main.tf:57-79"], "notes": "SSE-SQS, S3 SSE-KMS, ECR AES256, DynamoDB/Secrets Manager default encryption; AWS-managed keys, not CMK (SEC-07)." },
+        { "id": "SEC-04", "statement": "Encryption in transit (TLS) enforced; no plaintext endpoints.", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/terraform/ingestion/main.tf:234-261", "documentation/terraform/ingestion/waf.tf:146-151,156"], "notes": "API Gateway TLS-only; CloudFront origin https-only/TLSv1.2 and viewer https-only." },
+        { "id": "SEC-05", "statement": "Network segmentation & least-exposure.", "verdict": "Partial", "weight": 1.5, "evidence": ["documentation/terraform/runtime/main.tf:17-21"], "notes": "No VPC/security groups/VPC endpoints anywhere; fully public serverless design, architecturally justified but unsegmented." },
+        { "id": "SEC-06", "statement": "No public exposure of data stores/admin surfaces unless justified.", "verdict": "Met", "weight": 2.0, "evidence": ["documentation/terraform/bootstrap/main.tf:53-59"], "notes": "S3 public access block; only the webhook API is public, by design, now behind CloudFront+WAF, and authenticity-gated." },
+        { "id": "SEC-07", "statement": "KMS CMK usage & key rotation where appropriate.", "verdict": "Missing", "weight": 1.0, "evidence": ["documentation/terraform/security/main.tf:8-13,23,42"], "notes": "CMK removed account-wide due to an org-level DENY on kms:CreateKey (SEC-F2)." },
+        { "id": "SEC-08", "statement": "Authentication/authorization on all network-exposed endpoints/APIs.", "verdict": "Met", "weight": 2.0, "evidence": ["documentation/scripts/lambdas/webhook-receiver/handler.py:56-63,217-226", "documentation/terraform/ingestion/main.tf:144-149"], "notes": "HMAC verified before any processing, on both the CloudFront and the raw API Gateway entry path." },
+        { "id": "SEC-09", "statement": "Input validation / injection protection.", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/repo_reader.py:29-59", "documentation/scripts/lambdas/webhook-receiver/handler.py:140-196"], "notes": "Tar-slip/symlink protections; no shell/subprocess calls; parameterized boto3 calls." },
+        { "id": "SEC-10", "statement": "Detective controls (CloudTrail, Config, GuardDuty, Security Hub) enabled.", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/terraform/ingestion/waf.tf:32-36,128-132"], "notes": "New WAF CloudWatch logging/metrics at the webhook edge is a real but narrow improvement; no account-wide CloudTrail/Config/GuardDuty/Security Hub (SEC-F3)." },
+        { "id": "SEC-11", "statement": "Dependency & image vulnerability management.", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/terraform/ecr/main.tf:9-11", "documentation/scripts/agents/agent-technical-doc/requirements.txt:1-8"], "notes": "ECR scan_on_push + digest-pinned deploys, but Python deps unpinned (SEC-F5)." },
+        { "id": "SEC-12", "statement": "Secrets not logged; PII handling & redaction.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/secrets.py:44-60"], "notes": "Logs only dict keys, never secret values." },
+        { "id": "SEC-13", "statement": "Webhook/callback authenticity (signature verification).", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/scripts/lambdas/webhook-receiver/handler.py:56-63,222-226"], "notes": "Constant-time HMAC-SHA256 check via hmac.compare_digest." },
+        { "id": "SEC-14", "statement": "Security in CI/CD.", "verdict": "N/A", "weight": 1.0, "evidence": [], "notes": "No CI/CD pipeline exists; nothing to assess." },
+        { "id": "SEC-15", "statement": "Blast-radius containment (per-service roles, account/network boundaries).", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/terraform/ingestion/main.tf:54-153", "documentation/terraform/roles/main.tf:3-81"], "notes": "Distinct webhook/worker/runtime_execution roles, each minimally scoped, no sharing." }
+      ],
+      "strengths": [
+        { "text": "WAFv2 (managed Core Rule Set + Known Bad Inputs + per-IP rate limit) now sits in front of the public webhook via CloudFront, with logging/metrics enabled.", "evidence": ["documentation/terraform/ingestion/waf.tf:38-132"] },
+        { "text": "Recent IAM tightening holds up on fresh read.", "evidence": ["documentation/terraform/ingestion/main.tf:64-153"] },
+        { "text": "Webhook authenticity enforced with a constant-time HMAC-SHA256 check on both entry paths.", "evidence": ["documentation/scripts/lambdas/webhook-receiver/handler.py:56-63,217-226"] },
+        { "text": "Per-service IAM roles with no sharing across webhook, worker, and runtime_execution.", "evidence": ["documentation/terraform/ingestion/main.tf:54-153", "documentation/terraform/roles/main.tf:3-81"] },
+        { "text": "No long-lived static credentials; GitHub App with short-lived installation tokens preferred over PAT.", "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/github_auth.py:87-151"] },
+        { "text": "All data stores encrypted at rest with AWS-managed keys.", "evidence": ["documentation/terraform/ingestion/main.tf:8,14"] }
+      ],
+      "findings": [
+        { "id": "SEC-F1", "title": "WAF/CloudFront front now in place, but the raw API Gateway origin remains directly reachable (residual bypass)", "severity": "Low", "evidence": ["documentation/terraform/ingestion/waf.tf:18-21", "documentation/terraform/ingestion/outputs.tf:6-8", "documentation/terraform/ingestion/main.tf:234-269"], "impact": "Traffic sent directly to the execute-api URL skips WAF managed rules and the WAF rate rule, though it remains bound by API Gateway's stage throttle and must still pass HMAC verification before any state-changing action — no unauthenticated write path exists via either route. Downgraded from Medium (prior run) to Low.", "recommendation": "Add a shared-secret custom header set only by CloudFront's origin custom headers, checked in the Lambda before HMAC verification.", "alternative": { "summary": "CloudFront origin custom-header verification vs. accepting current residual risk", "pros": ["Closes the bypass at negligible cost/complexity", "Standard AWS pattern for CloudFront-only origins"], "cons": ["One more secret to rotate and keep in sync"], "effort": "S", "cross_pillar_impact": [] }, "cross_ref_pillars": [] },
+        { "id": "SEC-F2", "title": "No customer-managed KMS keys (CMK); blocked at the account level", "severity": "Low", "evidence": ["documentation/terraform/security/main.tf:8-13,23,42"], "impact": "All encryption uses AWS-managed/owned keys; no customer-controlled key policy, no configurable rotation, coarser CloudTrail key-usage attribution.", "recommendation": "Request narrow kms:CreateKey/key-management permissions, then re-enable kms_key_id and enable rotation.", "alternative": { "summary": "AWS-managed keys (current) vs. project CMK", "pros": ["Key-policy control", "Configurable rotation", "Fine-grained CloudTrail key-usage logs"], "cons": ["Added overhead/cost", "Currently blocked by an org-level IAM deny"], "effort": "M", "cross_pillar_impact": [] }, "cross_ref_pillars": [] },
+        { "id": "SEC-F3", "title": "No account/project-level detective controls (CloudTrail, Config, GuardDuty, Security Hub)", "severity": "Medium", "evidence": ["documentation/terraform/observability/main.tf:1-169"], "impact": "No centralized, immutable audit trail of API/IAM activity outside the webhook's own new WAF logs.", "recommendation": "Enable a baseline CloudTrail trail and metric filters/alarms on IAM/Secrets Manager access; consider GuardDuty.", "alternative": { "summary": "None — a baseline CloudTrail trail is a foundational, low-cost control.", "pros": [], "cons": [], "effort": "S", "cross_pillar_impact": ["operational-excellence"] }, "cross_ref_pillars": ["operational-excellence"] },
+        { "id": "SEC-F4", "title": "Bedrock model-invoke permission scoped wider than the models actually used", "severity": "Low", "evidence": ["documentation/terraform/roles/main.tf:42-49"], "impact": "Runtime role can invoke any foundation model in any region.", "recommendation": "Scope the BedrockInvoke Resource to the two configured model ARNs/region.", "alternative": null, "cross_ref_pillars": [] },
+        { "id": "SEC-F5", "title": "Unpinned Python dependencies, no lockfile", "severity": "Low", "evidence": ["documentation/scripts/agents/agent-technical-doc/requirements.txt:1-8"], "impact": "Builds not reproducible; may silently pick up vulnerable dependency versions.", "recommendation": "Pin exact versions or use a lockfile; add pip-audit/Dependabot.", "alternative": null, "cross_ref_pillars": [] }
+      ],
+      "improvements": [
+        { "priority": "P1", "text": "Enable a baseline CloudTrail trail plus metric filters/alarms (SEC-F3)", "effort": "S" },
+        { "priority": "P2", "text": "Add a CloudFront origin custom-header check in the webhook Lambda (SEC-F1)", "effort": "S" },
+        { "priority": "P2", "text": "Scope Bedrock InvokeModel resource to configured model ARNs (SEC-F4)", "effort": "S" },
+        { "priority": "P2", "text": "Pin Python dependency versions and add vulnerability scanning (SEC-F5)", "effort": "S" },
+        { "priority": "P3", "text": "Reintroduce customer-managed KMS keys once unblocked (SEC-F2)", "effort": "M" }
+      ],
+      "notes": "Static analysis only (live_aws=OFF). Focused single-pillar re-run following commit 6abcd3a which implemented the prior run's SEC-F1 finding. SEC-F1 independently re-verified: WAF/CloudFront correctly built, but a residual direct-origin bypass remains (retained as Low). SEC-F2/F4/F5 re-verified fresh and unchanged. No Critical findings; no capping. terraform validate/plan not run (time-boxed). AWS Documentation MCP not available this session."
+    }
+  ],
+  "roadmap": [
+    { "priority": "P1", "type": "quick_win", "pillar": "security", "finding_id": "SEC-F3", "action": "Enable a baseline CloudTrail trail + metric filters/alarms on IAM/Secrets Manager activity", "effort": "S" },
+    { "priority": "P2", "type": "quick_win", "pillar": "security", "finding_id": "SEC-F1", "action": "Add a CloudFront origin custom-header check in the webhook Lambda to reject direct API Gateway traffic", "effort": "S" },
+    { "priority": "P2", "type": "quick_win", "pillar": "security", "finding_id": "SEC-F4", "action": "Scope the Bedrock InvokeModel resource to the two configured model ARNs and region", "effort": "S" },
+    { "priority": "P2", "type": "quick_win", "pillar": "security", "finding_id": "SEC-F5", "action": "Pin Python dependencies with a lock file; enable Dependabot/pip-audit", "effort": "S" },
+    { "priority": "P3", "type": "structural", "pillar": "security", "finding_id": "SEC-F2", "action": "Reintroduce customer-managed KMS keys once the account-level kms:CreateKey deny is lifted", "effort": "M" }
+  ]
+}
