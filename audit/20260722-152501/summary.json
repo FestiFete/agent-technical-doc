@@ -1,0 +1,74 @@
+{
+  "target": "/Users/g.mirambeau/Development/AWS/agent-technical-doc",
+  "timestamp_utc": "20260722-152501",
+  "mode": "static",
+  "scope": "security-only (user-requested focused re-run #3, not the full 12-pillar audit)",
+  "evaluated_working_tree": true,
+  "uncommitted_changes_evaluated": [
+    "documentation/terraform/observability/cloudtrail.tf (new)",
+    "documentation/terraform/observability/variables.tf (modified)"
+  ],
+  "prior_runs": ["audit/20260721-133806/ (full audit, score 79)", "audit/20260721-154651/ (security-only, score 81)"],
+  "weights": { "security": 1.5 },
+  "global": {
+    "score": 81,
+    "maturity_uncapped": 4,
+    "maturity": 4,
+    "capped": false,
+    "capping_findings": []
+  },
+  "pillars": [
+    { "pillar": "security", "title": "Security", "applicable": true, "status": "ok", "score": 81, "maturity": 4, "coverage": 0.96, "confidence": "high",
+      "criteria": [
+        { "id": "SEC-01", "statement": "Least-privilege IAM (no wildcard * actions/resources without justification)", "verdict": "Partial", "weight": 2.0, "evidence": ["documentation/terraform/ingestion/main.tf:64-153", "documentation/terraform/observability/cloudtrail.tf:127-134", "documentation/terraform/roles/main.tf:38-45"], "notes": "New cloudtrail_to_cw role is well-scoped; Bedrock InvokeModel Resource remains wildcarded (SEC-F4), unchanged." },
+        { "id": "SEC-02", "statement": "No long-lived credentials/secrets in code or state.", "verdict": "Met", "weight": 2.0, "evidence": ["documentation/terraform/security/main.tf:26-37,45-52", "documentation/scripts/agents/agent-technical-doc/docagent/github_auth.py:87-151"], "notes": "Unchanged." },
+        { "id": "SEC-03", "statement": "Encryption at rest on all data stores.", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/terraform/ingestion/main.tf:8,14", "documentation/terraform/bootstrap/main.tf:43-51", "documentation/terraform/observability/cloudtrail.tf:31-39"], "notes": "New CloudTrail S3 bucket also SSE-KMS encrypted (AWS-managed key)." },
+        { "id": "SEC-04", "statement": "Encryption in transit (TLS) enforced.", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/terraform/ingestion/main.tf:234-261", "documentation/terraform/ingestion/waf.tf:146-151,156"], "notes": "Unchanged." },
+        { "id": "SEC-05", "statement": "Network segmentation & least-exposure.", "verdict": "Partial", "weight": 1.5, "evidence": ["documentation/terraform/runtime/main.tf:17-21"], "notes": "No VPC/security groups anywhere; unchanged." },
+        { "id": "SEC-06", "statement": "No public exposure of data stores/admin surfaces unless justified.", "verdict": "Met", "weight": 2.0, "evidence": ["documentation/terraform/bootstrap/main.tf:53-59", "documentation/terraform/observability/cloudtrail.tf:42-49"], "notes": "New CloudTrail bucket also fully public-access-blocked." },
+        { "id": "SEC-07", "statement": "KMS CMK usage & key rotation where appropriate.", "verdict": "Missing", "weight": 1.0, "evidence": ["documentation/terraform/security/main.tf:8-16,23,42", "documentation/terraform/observability/cloudtrail.tf:14-16"], "notes": "New CloudTrail resources consistently use AWS-managed keys, not a new gap (SEC-F2)." },
+        { "id": "SEC-08", "statement": "Authentication/authorization on all network-exposed endpoints/APIs.", "verdict": "Met", "weight": 2.0, "evidence": ["documentation/scripts/lambdas/webhook-receiver/handler.py:56-63,217-226"], "notes": "Unchanged." },
+        { "id": "SEC-09", "statement": "Input validation / injection protection.", "verdict": "Met", "weight": 1.5, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/repo_reader.py:29-59"], "notes": "Unchanged." },
+        { "id": "SEC-10", "statement": "Detective controls (CloudTrail, Config, GuardDuty, Security Hub) enabled.", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/terraform/observability/cloudtrail.tf:144-156", "documentation/terraform/observability/cloudtrail.tf:221-224", "documentation/terraform/observability/variables.tf:21-25"], "notes": "CloudTrail + GuardDuty now correctly enabled — substantial improvement. Held at Partial: neither the new alarms nor GuardDuty findings have a default notification path (alarm_actions defaults to []), and Config/Security Hub remain entirely absent." },
+        { "id": "SEC-11", "statement": "Dependency & image vulnerability management.", "verdict": "Partial", "weight": 1.0, "evidence": ["documentation/terraform/ecr/main.tf:9-11", "documentation/scripts/agents/agent-technical-doc/requirements.txt:1-8"], "notes": "Unchanged (SEC-F5)." },
+        { "id": "SEC-12", "statement": "Secrets not logged; PII handling & redaction.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/scripts/agents/agent-technical-doc/docagent/secrets.py:44-60"], "notes": "Unchanged." },
+        { "id": "SEC-13", "statement": "Webhook/callback authenticity (signature verification).", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/scripts/lambdas/webhook-receiver/handler.py:56-63,222-226"], "notes": "Unchanged." },
+        { "id": "SEC-14", "statement": "Security in CI/CD.", "verdict": "N/A", "weight": 1.0, "evidence": [], "notes": "No CI/CD pipeline exists; nothing to assess." },
+        { "id": "SEC-15", "statement": "Blast-radius containment.", "verdict": "Met", "weight": 1.0, "evidence": ["documentation/terraform/ingestion/main.tf:54-153", "documentation/terraform/roles/main.tf:3-81", "documentation/terraform/observability/cloudtrail.tf:121-134"], "notes": "Now includes a distinct cloudtrail_to_cw role in addition to webhook/worker/runtime_execution." }
+      ],
+      "strengths": [
+        { "text": "A genuine, correctly-built account-wide detective baseline now exists: multi-region CloudTrail with global service events and log file validation, a least-privilege log-delivery IAM role, and a GuardDuty detector.", "evidence": ["documentation/terraform/observability/cloudtrail.tf:144-156", "documentation/terraform/observability/cloudtrail.tf:121-141", "documentation/terraform/observability/cloudtrail.tf:221-224"] },
+        { "text": "The CloudTrail S3 bucket policy correctly implements AWS's documented required statements; bucket is fully public-access-blocked and encrypted.", "evidence": ["documentation/terraform/observability/cloudtrail.tf:42-49,65-100"] },
+        { "text": "Two purpose-built metric filter + alarm pairs target the most security-relevant event classes (IAM changes, Secrets Manager read volume) with sensibly differentiated thresholds.", "evidence": ["documentation/terraform/observability/cloudtrail.tf:160-218"] },
+        { "text": "WAFv2 (managed Core Rule Set + Known Bad Inputs + per-IP rate limit) sits in front of the public webhook via CloudFront, with logging/metrics enabled.", "evidence": ["documentation/terraform/ingestion/waf.tf:38-132"] },
+        { "text": "IAM remains well-scoped across all roles, reinforced by the new cloudtrail_to_cw role following the same minimal-scope pattern.", "evidence": ["documentation/terraform/ingestion/main.tf:64-153", "documentation/terraform/observability/cloudtrail.tf:127-134"] }
+      ],
+      "findings": [
+        { "id": "SEC-F3", "title": "Detective controls substantially implemented (CloudTrail + GuardDuty + IAM/Secrets alarms), but notification path unwired and Config/Security Hub still absent", "severity": "Low", "evidence": ["documentation/terraform/observability/cloudtrail.tf:185", "documentation/terraform/observability/cloudtrail.tf:217", "documentation/terraform/observability/variables.tf:21-25", "documentation/terraform/observability/cloudtrail.tf:65-94"], "impact": "CloudTrail provides a real, tamper-evident audit trail and GuardDuty provides automatic anomaly detection, but neither the two new CloudWatch alarms nor any GuardDuty finding is routed to a human/on-call system by default (no aws_sns_topic anywhere in the repo). The CloudTrail bucket policy also lacks an aws:SourceArn condition (narrow confused-deputy risk).", "recommendation": "Create an SNS topic and populate var.alarm_actions to close the notification loop for all 5 module alarms; add aws:SourceArn conditions to the CloudTrail bucket policy; consider AWS Config/Security Hub once past POC scale.", "alternative": { "summary": "Wire an SNS topic + subscription now vs. leave console-only", "pros": ["Closes the actionability gap for both new and pre-existing alarms in one change", "Standard, low-cost AWS pattern", "Also resolves part of Operational Excellence's OPS-F2 as a side effect"], "cons": ["One more resource to manage", "Needs a real destination decided outside Terraform"], "effort": "S", "cross_pillar_impact": ["operational-excellence"] }, "cross_ref_pillars": ["operational-excellence"] },
+        { "id": "SEC-F1", "title": "WAF/CloudFront front in place, but the raw API Gateway origin remains directly reachable (residual bypass, unchanged)", "severity": "Low", "evidence": ["documentation/terraform/ingestion/waf.tf:18-21", "documentation/terraform/ingestion/outputs.tf:6-8"], "impact": "Traffic sent directly to the execute-api URL skips WAF managed rules and the rate rule, though still bound by API Gateway throttle and HMAC check. No unauthenticated write path exists.", "recommendation": "Add a shared-secret custom header set only by CloudFront's origin custom headers, checked in the Lambda before HMAC verification.", "alternative": { "summary": "CloudFront custom-header origin-verification vs. accept as residual risk", "pros": ["Closes the bypass at negligible cost/complexity"], "cons": ["One more secret to rotate and keep in sync"], "effort": "S", "cross_pillar_impact": [] }, "cross_ref_pillars": [] },
+        { "id": "SEC-F2", "title": "No customer-managed KMS keys (CMK); blocked at the account level (unchanged)", "severity": "Low", "evidence": ["documentation/terraform/security/main.tf:8-16,23,42", "documentation/terraform/observability/cloudtrail.tf:14-16,31-39"], "impact": "Every data store, including the new CloudTrail bucket, uses AWS-managed/owned keys.", "recommendation": "Request narrow kms:CreateKey/key-management permissions, then re-enable kms_key_id across all data stores and enable automatic rotation.", "alternative": { "summary": "AWS-managed keys (current) vs. project CMK", "pros": ["Key-policy control", "Configurable rotation", "Fine-grained CloudTrail key-usage logs"], "cons": ["Added overhead/cost", "Blocked by an org-level IAM deny"], "effort": "M", "cross_pillar_impact": [] }, "cross_ref_pillars": [] },
+        { "id": "SEC-F4", "title": "Bedrock model-invoke permission scoped wider than the models actually used (unchanged)", "severity": "Low", "evidence": ["documentation/terraform/roles/main.tf:38-45"], "impact": "Runtime role can invoke any foundation model in any region.", "recommendation": "Scope the BedrockInvoke Resource to the two configured model ARNs/region.", "alternative": null, "cross_ref_pillars": [] },
+        { "id": "SEC-F5", "title": "Unpinned Python dependencies, no lockfile (unchanged)", "severity": "Low", "evidence": ["documentation/scripts/agents/agent-technical-doc/requirements.txt:1-8"], "impact": "Builds not reproducible; may silently pick up vulnerable dependency versions.", "recommendation": "Pin exact versions or use a lockfile; add pip-audit/Dependabot.", "alternative": null, "cross_ref_pillars": [] }
+      ],
+      "improvements": [
+        { "priority": "P1", "text": "Create an SNS topic and populate var.alarm_actions so all 5 CloudWatch alarms actually notify someone (SEC-F3)", "effort": "S" },
+        { "priority": "P2", "text": "Add aws:SourceArn condition to the CloudTrail S3 bucket policy statements (SEC-F3)", "effort": "S" },
+        { "priority": "P2", "text": "Add a CloudFront origin custom-header check in the webhook Lambda (SEC-F1)", "effort": "S" },
+        { "priority": "P2", "text": "Scope Bedrock InvokeModel resource to configured model ARNs (SEC-F4)", "effort": "S" },
+        { "priority": "P2", "text": "Pin Python dependency versions and add vulnerability scanning (SEC-F5)", "effort": "S" },
+        { "priority": "P3", "text": "Evaluate AWS Config and/or Security Hub once past POC scale (SEC-F3)", "effort": "M" },
+        { "priority": "P3", "text": "Reintroduce customer-managed KMS keys once unblocked (SEC-F2)", "effort": "M" }
+      ],
+      "notes": "Static analysis only (live_aws=OFF). Evaluated the current working tree including uncommitted observability/cloudtrail.tf (new) and variables.tf (modified). SEC-F3's severity moved Medium->Low (real risk reduction) but the SEC-10 criterion verdict stayed Partial->Partial because Config/Security Hub remain absent and neither new alarms nor GuardDuty findings have a default notification path — this is why the pillar score (81/100) did not move even though real, correctly-built security work was verified. SEC-F1/F2/F4/F5 re-verified fresh, unchanged. No Critical findings; no capping."
+    }
+  ],
+  "roadmap": [
+    { "priority": "P1", "type": "quick_win", "pillar": "security", "finding_id": "SEC-F3", "action": "Create an SNS topic and populate var.alarm_actions so all 5 CloudWatch alarms actually notify someone", "effort": "S" },
+    { "priority": "P2", "type": "quick_win", "pillar": "security", "finding_id": "SEC-F3", "action": "Add aws:SourceArn condition to the CloudTrail S3 bucket policy statements", "effort": "S" },
+    { "priority": "P2", "type": "quick_win", "pillar": "security", "finding_id": "SEC-F1", "action": "Add a CloudFront origin custom-header check in the webhook Lambda to reject direct API Gateway traffic", "effort": "S" },
+    { "priority": "P2", "type": "quick_win", "pillar": "security", "finding_id": "SEC-F4", "action": "Scope the Bedrock InvokeModel resource to the two configured model ARNs and region", "effort": "S" },
+    { "priority": "P2", "type": "quick_win", "pillar": "security", "finding_id": "SEC-F5", "action": "Pin Python dependencies with a lock file; enable Dependabot/pip-audit", "effort": "S" },
+    { "priority": "P3", "type": "structural", "pillar": "security", "finding_id": "SEC-F3", "action": "Evaluate AWS Config and/or Security Hub once past POC scale", "effort": "M" },
+    { "priority": "P3", "type": "structural", "pillar": "security", "finding_id": "SEC-F2", "action": "Reintroduce customer-managed KMS keys once the account-level kms:CreateKey deny is lifted", "effort": "M" }
+  ]
+}
