@@ -1,0 +1,116 @@
+# Security — Audit
+
+**Score:** 81/100  **Maturity:** 4 (Managed)  **Coverage:** 95%  **Confidence:** high
+**Applicable:** yes
+
+## Charter & scope
+Covers confidentiality, integrity, and availability controls: identity & access management, data protection (at rest/in transit), network security, secrets management, detective controls, and secure SDLC. Does not cover backup/DR mechanics (-> Reliability) or general IaC hygiene (-> Terraform).
+
+## Delta since the prior run (audit/20260722-152501/02-security.md, score 81/100)
+
+**Numeric score unchanged (81 → 81), but two real, independently-verified security improvements landed and are credited below.** The score's stability is a direct, explainable consequence of where those improvements sit in the criteria grid (both were already "Met" verdicts in the prior run's narrative, or offset by an unrelated unchanged gap), not a sign that nothing happened.
+
+**1. SEC-F1 (WAF/CloudFront residual bypass) — now genuinely closed at the application layer.** Commit `2080990` ("Deactivate direct call to API Gateway + activate WAF usage") plus follow-ups implement exactly the origin-verification mechanism the prior run recommended:
+- `documentation/terraform/ingestion/waf.tf:37-40` — `random_password.origin_verify` (32-char secret), Terraform-generated, never logged.
+- `documentation/terraform/ingestion/waf.tf:233-238` — the CloudFront origin (`aws_cloudfront_distribution.webhook`) attaches it as a `custom_header` (`X-Origin-Verify`) on every request forwarded to the API Gateway origin.
+- `documentation/terraform/ingestion/main.tf:210` — the secret is passed to the webhook Lambda as `ORIGIN_VERIFY_SECRET`.
+- `documentation/scripts/lambdas/webhook-receiver/handler.py:59-73` — `verify_origin(header_value, secret)`, a pure, constant-time (`hmac.compare_digest`) function; if `secret` is empty the check is a no-op (allows running without CloudFront in front, e.g. local tests).
+- `documentation/scripts/lambdas/webhook-receiver/handler.py:246-248` — called as the **very first** step of `lambda_handler`, before the HMAC secret is even fetched from Secrets Manager, and returns the identical generic `401 "signature invalide"` message used for an invalid HMAC signature — no oracle to distinguish the two rejection causes.
+- `documentation/scripts/lambdas/tests/test_webhook_receiver.py:43-55` — three unit tests (`test_verify_origin_valid`, `test_verify_origin_invalid`, `test_verify_origin_disabled_when_secret_empty`) covering the pure function.
+- `documentation/terraform/ingestion/outputs.tf:1-8` — `webhook_url` (CloudFront domain) is now documented as the only value to configure in GitHub; `webhook_api_gateway_url` is explicitly labeled "debug/diagnostic uniquement... désormais rejetée par la Lambda (401)".
+
+  Re-verified independently this run (not assumed): a request sent directly to the raw `execute-api` URL — bypassing CloudFront and therefore the WAF's managed rule sets and per-IP rate limit — now lacks the `X-Origin-Verify` header and is rejected by the Lambda with a cheap, pre-parse 401, regardless of whether the caller also has a valid HMAC signature (which requires the separate webhook-HMAC secret, unrelated to `ORIGIN_VERIFY_SECRET`). This closes the practical exploit value of the gap: GitHub itself only ever calls the CloudFront URL, so a functioning delivery cannot originate anywhere but through CloudFront+WAF. A very narrow residual remains — the `execute-api` hostname is still network-reachable (HTTP APIs support no resource policy) so it can still absorb probing/DoS traffic up to API Gateway's account throttle (10 rps/20 burst, `main.tf:275-277`) before being rejected — but each rejection is a cheap header comparison before any Secrets Manager call, JSON parse, or DynamoDB/SQS write, so the cost of that residual surface is minimal. **This finding is downgraded from Low to Info/Resolved** (see Findings section).
+- **Why this doesn't move the numeric score:** in the prior run's criteria grid, SEC-08 and SEC-13 (the criteria SEC-F1 was narratively attached to) were *already* verdict `Met` — the finding was tracked as a residual-risk narrative note, not as the reason for a `Partial`. Closing it strengthens the evidence behind an already-`Met` verdict; it does not change any credit value in the score formula.
+
+**2. `InvokeRuntimeScoped` IAM statement — now a justified 2-ARN list, re-assessed for SEC-01 framing.** `documentation/terraform/ingestion/main.tf:150-165`:
+```hcl
+Resource = [
+  local.runtime_arn,
+  "${local.runtime_arn}/runtime-endpoint/DEFAULT",
+]
+```
+Commits `3aef4df` and `f89ea51` widened this from a single bare-ARN entry (the state left by the earlier `SEC-03` wildcard-removal commit) to two explicit ARNs, after live testing showed `bedrock-agentcore:InvokeAgentRuntime` returns `AccessDeniedException` unless *both* the bare runtime ARN and its fixed-suffix `.../runtime-endpoint/DEFAULT` ARN are authorized (platform behavior, not a code choice). **Assessed as still fully consistent with least-privilege in spirit:** `DEFAULT` is AgentCore's one fixed runtime-endpoint name (not a wildcard, not `runtime-endpoint/*`), so this is a precise 2-member enumeration of the exact resources the API call touches — the opposite pattern from the wildcard that was removed by `SEC-03` and the wildcard that was never reintroduced here despite the temptation (the code comment at `main.tf:156-160` explicitly notes the team chose to list both ARNs precisely "plutôt que de réintroduire un wildcard"). This is a positive data point for the pillar: the same team that caused a production outage by over-tightening IAM (see context pack §3) recovered by adding precisely the two resources actually required, not by reaching for a broader wildcard as a shortcut. Net effect on SEC-01: neutral-to-positive; SEC-01 remains `Partial` for an unrelated, unchanged reason (SEC-F4, the account/region-wide Bedrock foundation-model wildcard in `documentation/terraform/roles/main.tf:44-48`).
+
+**Everything else re-verified fresh and unchanged:** SEC-F2 (no CMK, `documentation/terraform/security/main.tf:8-16`, `documentation/terraform/observability/cloudtrail.tf:14-16,35-39`), SEC-F3 (CloudTrail/GuardDuty enabled but alarms/`aws_sns_topic` unwired — `documentation/terraform/observability/cloudtrail.tf:185,217`, `variables.tf` `alarm_actions` default `[]`, repo-wide grep for `aws_sns_topic`/`aws_config`/`securityhub` still zero matches), SEC-F4 (Bedrock wildcard, `documentation/terraform/roles/main.tf:42-48`), SEC-F5 (unpinned deps, `documentation/scripts/agents/agent-technical-doc/requirements.txt:1-8`, no lockfile anywhere in the repo). `git status` at the start of this session showed `documentation/terraform/ingestion/main.tf` as locally modified, but `git diff` against `develop` returns empty — the working tree matches the committed `f89ea51` state with no pending edits; all evidence below is against that committed state.
+
+## Strengths
+- The origin-verify mechanism recommended by the prior audit is now fully implemented end-to-end and unit-tested: shared secret generated by Terraform, attached as a CloudFront custom header, checked constant-time as the first step of the Lambda handler before any expensive or stateful operation — _evidence: `documentation/terraform/ingestion/waf.tf:37-40,233-238`, `documentation/terraform/ingestion/main.tf:210`, `documentation/scripts/lambdas/webhook-receiver/handler.py:59-73,246-248`, `documentation/scripts/lambdas/tests/test_webhook_receiver.py:43-55`_
+- The `InvokeRuntimeScoped` IAM fix demonstrates disciplined recovery from an over-tightening incident: two precisely-enumerated ARNs, not a reintroduced wildcard — _evidence: `documentation/terraform/ingestion/main.tf:150-165`_
+- WAFv2 (managed Core Rule Set + Known Bad Inputs + custom body-size rule + per-IP rate limit) sits correctly in front of the public webhook via CloudFront, scope=CLOUDFRONT correctly built in `us-east-1`, logging to a dedicated CloudWatch log group — _evidence: `documentation/terraform/ingestion/waf.tf:56-212`_
+- IAM remains well-scoped elsewhere with resource-level conditions: webhook role limited to `dynamodb:PutItem/UpdateItem/Query` (with `dynamodb:LeadingKeys` condition) and `sqs:SendMessage` (with `sqs:QueueName` condition); worker role's re-added `sqs:GetQueueAttributes` is read-only, scoped to the single queue ARN, and documented as required by the managed Lambda↔SQS poller infrastructure, not a regression — _evidence: `documentation/terraform/ingestion/main.tf:64-107,136-149`_
+- A genuine account-wide detective baseline exists: multi-region CloudTrail with global service events and log file validation, a least-privilege log-delivery IAM role, and a GuardDuty detector — _evidence: `documentation/terraform/observability/cloudtrail.tf:144-156,121-141,221-224`_
+- Webhook authenticity is now double-gated: origin-verify header check followed by constant-time HMAC-SHA256 signature check, both before payload parsing — _evidence: `documentation/scripts/lambdas/webhook-receiver/handler.py:246-259`_
+- No long-lived static credentials: GitHub App short-lived tokens via RS256 JWT exchange; Secrets Manager values set out-of-band — _evidence: `documentation/terraform/security/main.tf:19-49`_
+- Per-service IAM roles with no sharing (webhook, worker, runtime execution, cloudtrail-to-cw) — _evidence: `documentation/terraform/ingestion/main.tf:54-57,112-115`, `documentation/terraform/roles/main.tf:3-20`, `documentation/terraform/observability/cloudtrail.tf:121-125`_
+- Tar-slip / symlink extraction protection for repository archives, no `subprocess`/`os.system`/`shell=True` found in `docagent/` — _evidence: `documentation/scripts/agents/agent-technical-doc/docagent/repo_reader.py:27-58`_
+- Secrets are never logged, only dict key names — _evidence: `documentation/scripts/agents/agent-technical-doc/docagent/secrets.py:52-60`_
+
+## Weaknesses / Findings
+
+### [Info] SEC-F1 — WAF/CloudFront origin-verify closure confirmed; only a minimal probing/DoS surface remains (resolved from Low)
+- **Evidence:** `documentation/terraform/ingestion/waf.tf:37-40,233-238`; `documentation/scripts/lambdas/webhook-receiver/handler.py:59-73,246-248`; `documentation/terraform/ingestion/outputs.tf:1-8`; `documentation/terraform/ingestion/main.tf:275-277` (API Gateway stage throttle, still the outer bound on the raw endpoint).
+- **Impact:** The raw `execute-api` origin remains network-reachable (HTTP APIs support no resource policy), but every request lacking the CloudFront-injected `X-Origin-Verify` header is now rejected by the Lambda before any Secrets Manager call, JSON parse, or state-changing action. No functional bypass of authenticity/authorization exists via either route; the residual is limited to consuming API Gateway's account-level throttle budget (10 rps/20 burst) with cheap 401s.
+- **Recommendation:** No further action required for this POC. If ever needed, an AWS WAF-in-front-of-API-Gateway pattern (REST API + WAFv2 direct association) would remove the network-level reachability entirely, but that requires migrating off HTTP API — disproportionate effort for the marginal risk reduction here.
+- **Alternative solution:** None — current approach (CloudFront + WAF + origin-verify header + HMAC) is appropriate; it closes the practical bypass at negligible cost and matches AWS's documented pattern for protecting an HTTP API with WAF.
+
+### [Low] SEC-F3 — Detective controls substantially implemented (CloudTrail + GuardDuty + IAM/Secrets alarms), but notification path unwired and Config/Security Hub still absent (unchanged)
+- **Evidence:** `documentation/terraform/observability/cloudtrail.tf:185,217` (`alarm_actions = var.alarm_actions` on both alarms); `documentation/terraform/observability/variables.tf` (`alarm_actions` defaults to `[]`); repo-wide grep for `aws_sns_topic` across `documentation/terraform/` — zero matches; repo-wide grep for `aws_config|securityhub` — zero matches.
+- **Impact:** CloudTrail provides a real, tamper-evident audit trail and GuardDuty provides automatic anomaly detection on CloudTrail management events, but neither the two CloudWatch alarms nor any GuardDuty finding is routed to a human or on-call system by default.
+- **Recommendation:** (1) Create an SNS topic and set `var.alarm_actions`. (2) Add an `aws:SourceArn` condition to the CloudTrail bucket policy (`documentation/terraform/observability/cloudtrail.tf:65-94`, AWS best practice, still absent). (3) Consider AWS Config / Security Hub once past POC scale.
+- **Alternative solution:** Wire an SNS topic + email/Slack subscription now (recommended): pros — closes the actionability gap in one change; cons — needs a real destination decided outside Terraform. Effort: S. Cross-pillar impact: also resolves part of Operational Excellence's alarm-notification gap.
+
+### [Low] SEC-F2 — No customer-managed KMS keys (CMK); blocked at the account level (unchanged)
+- **Evidence:** `documentation/terraform/security/main.tf:8-16,23,42`; `documentation/terraform/ingestion/main.tf:6-14`; `documentation/terraform/observability/cloudtrail.tf:14-16,31-39`.
+- **Impact:** Every data store uses AWS-managed/owned keys: no customer-controlled key policy, no configurable rotation cadence, coarser key-usage attribution.
+- **Recommendation:** Request the narrow `kms:CreateKey`/key-management permissions, then re-enable `kms_key_id` across Secrets Manager/DynamoDB/S3/CloudTrail and enable rotation.
+- **Alternative solution:** CMK vs. current AWS-managed keys. Pros of CMK: key-policy control, configurable rotation, cross-account boundary. Cons: operational overhead, currently blocked by an org-level IAM deny outside this project's control. Effort: M (blocked).
+
+### [Low] SEC-F4 — Bedrock model-invoke permission scoped wider than the models actually used (unchanged)
+- **Evidence:** `documentation/terraform/roles/main.tf:42-48` (`Resource = ["arn:aws:bedrock:*::foundation-model/*", "arn:aws:bedrock:*:${local.account_id}:inference-profile/*"]`).
+- **Impact:** The runtime execution role can invoke any foundation model in any region, not just the models actually configured. No direct exploit path identified (still requires the role's credentials).
+- **Recommendation:** Scope `BedrockInvoke`'s `Resource` to the specific model/inference-profile ARNs and region actually used.
+- **Alternative solution:** None needed — straightforward tightening consistent with the least-privilege pattern applied elsewhere (e.g. `InvokeRuntimeScoped`'s precise 2-ARN list). Effort: S.
+
+### [Low] SEC-F5 — Unpinned Python dependencies, no lockfile (unchanged)
+- **Evidence:** `documentation/scripts/agents/agent-technical-doc/requirements.txt:1-8` (`bedrock-agentcore>=0.1.0`, `strands-agents[otel]>=0.1.0`, `boto3>=1.34.0`, `botocore>=1.34.0`, `pyjwt[crypto]>=2.8.0`, `aws-opentelemetry-distro>=0.10.0`); no lockfile found anywhere in the repo.
+- **Impact:** Container builds are not reproducible and can silently pick up new — possibly vulnerable — dependency versions between builds.
+- **Recommendation:** Pin exact versions or generate a lockfile (`pip-compile`/`uv lock`); add `pip-audit`/Dependabot scanning.
+- **Alternative solution:** None needed. Effort: S.
+
+## Criteria grid
+| id | criterion | verdict | evidence |
+|----|-----------|---------|----------|
+| SEC-01 | Least-privilege IAM (no wildcard `*` actions/resources without justification) | Partial | `documentation/terraform/ingestion/main.tf:64-165` (webhook/worker roles well-scoped with conditions; `InvokeRuntimeScoped` now a precise 2-ARN list, not a wildcard); `documentation/terraform/roles/main.tf:42-48` (Bedrock `Resource` wildcard broader than models used — SEC-F4) |
+| SEC-02 | No long-lived credentials/secrets in code or state; use of Secrets Manager/SSM/roles | Met | `documentation/terraform/security/main.tf:19-49`; `documentation/scripts/lambdas/webhook-receiver/handler.py:150-157` (secret fetched via Secrets Manager at runtime, cached in memory only) |
+| SEC-03 | Encryption at rest on all data stores (S3, RDS, DynamoDB, EBS, etc.) | Met | `documentation/terraform/ingestion/main.tf:6-14` (SSE-SQS); `documentation/terraform/bootstrap/main.tf:41-49` (S3 SSE-KMS); `documentation/terraform/ecr/main.tf:13-15` (AES256); `documentation/terraform/observability/cloudtrail.tf:31-39` (CloudTrail bucket SSE-KMS); `documentation/terraform/security/main.tf:60-72` (DynamoDB default encryption) |
+| SEC-04 | Encryption in transit (TLS) enforced; no plaintext endpoints | Met | `documentation/terraform/ingestion/waf.tf:226-231` (origin `https-only`, TLSv1.2); `documentation/terraform/ingestion/waf.tf:241-243` (`viewer_protocol_policy = "https-only"`) |
+| SEC-05 | Network segmentation & least-exposure (no 0.0.0.0/0 to sensitive ports; private subnets) | Partial | `documentation/terraform/runtime/main.tf:17-21` (`network_mode = "PUBLIC"`, documented as required for GitHub/Bedrock egress); no VPC/security groups/VPC endpoints anywhere in `documentation/terraform/` |
+| SEC-06 | No public exposure of data stores/admin surfaces unless justified | Met | `documentation/terraform/bootstrap/main.tf:53-59`; `documentation/terraform/observability/cloudtrail.tf:42-49`; only the webhook HTTP API (behind CloudFront+WAF+origin-verify) is public, by design |
+| SEC-07 | KMS CMK usage & key rotation where appropriate | Missing | `documentation/terraform/security/main.tf:8-16,23,42` — CMK explicitly removed account-wide (SEC-F2) |
+| SEC-08 | Authentication/authorization on all network-exposed endpoints/APIs | Met | `documentation/scripts/lambdas/webhook-receiver/handler.py:246-259` (origin-verify + HMAC, both before parsing); worker→runtime invocation is IAM-scoped, not publicly reachable |
+| SEC-09 | Input validation / injection protection (SQLi, cmd injection, SSRF) | Met | `documentation/scripts/agents/agent-technical-doc/docagent/repo_reader.py:27-58` (tar-slip/symlink protection); no `subprocess`/`os.system`/`shell=True` found in `docagent/`; parameterized boto3 calls (`documentation/scripts/lambdas/webhook-receiver/handler.py:160-216`) |
+| SEC-10 | Detective controls (CloudTrail, Config, GuardDuty, Security Hub) enabled | Partial | `documentation/terraform/observability/cloudtrail.tf:144-156` (multi-region CloudTrail), `cloudtrail.tf:221-224` (GuardDuty); but `cloudtrail.tf:185,217` alarms have no default notification path, and AWS Config/Security Hub are entirely absent — SEC-F3 |
+| SEC-11 | Dependency & image vulnerability management (pinned deps, scanning) | Partial | `documentation/terraform/ecr/main.tf:9-11` (`scan_on_push=true`); `documentation/terraform/runtime/main.tf:11-13` (pinned by immutable image digest); `documentation/scripts/agents/agent-technical-doc/requirements.txt:1-8` unpinned `>=` ranges, no lockfile — SEC-F5 |
+| SEC-12 | Secrets not logged; PII handling & redaction | Met | `documentation/scripts/agents/agent-technical-doc/docagent/secrets.py:52-60` (logs only dict keys, never values) |
+| SEC-13 | Webhook/callback authenticity (signature verification) where applicable | Met | `documentation/scripts/lambdas/webhook-receiver/handler.py:76-83` (`hmac.compare_digest`, constant-time HMAC-SHA256), `handler.py:59-73` (origin-verify, added defense-in-depth layer) |
+| SEC-14 | Security in CI/CD (no secret leakage, protected branches, signed artifacts) | N/A | No CI/CD pipeline exists in the repo (no `.github/workflows/` directory found this run, repo-wide search); deployment is manual |
+| SEC-15 | Blast-radius containment (per-service roles, account/network boundaries) | Met | `documentation/terraform/ingestion/main.tf:54-57,112-115` (distinct `webhook`/`worker` roles); `documentation/terraform/roles/main.tf:3-20` (distinct `runtime_execution` role); `documentation/terraform/observability/cloudtrail.tf:121-125` (distinct `cloudtrail_to_cw` role) |
+
+## Prioritized improvements
+| priority | action | effort |
+|----------|--------|--------|
+| P1 | Create an SNS topic and populate `var.alarm_actions` so all CloudWatch alarms (operational + IAM/Secrets) and, ideally, GuardDuty findings actually notify someone — SEC-F3 | S |
+| P2 | Add `aws:SourceArn` condition to the CloudTrail S3 bucket policy statements (AWS-documented best practice) — SEC-F3 | S |
+| P2 | Scope the Bedrock `InvokeModel`/`InvokeModelWithResponseStream` resource to the specific model/inference-profile ARNs and region actually used, following the same precise-enumeration pattern already applied to `InvokeRuntimeScoped` — SEC-F4 | S |
+| P2 | Pin Python dependency versions (lockfile) and add `pip-audit`/Dependabot scanning — SEC-F5 | S |
+| P3 | Evaluate AWS Config and/or Security Hub once past POC scale, to fully satisfy SEC-10's four named control types — SEC-F3 | M |
+| P3 | Reintroduce customer-managed KMS keys once the account-level `kms:CreateKey` deny is lifted; enable automatic rotation — SEC-F2 | M (blocked on org-level change) |
+
+## Notes & assumptions
+- Static analysis only (`live_aws=OFF`); no AWS API calls were made this run. IAM policies were validated by reading their JSON/HCL bodies directly, not by simulating access.
+- All files named in the task instructions were re-read in full this run: `documentation/terraform/ingestion/waf.tf`, `documentation/scripts/lambdas/webhook-receiver/handler.py`, `documentation/terraform/ingestion/main.tf`, `documentation/terraform/roles/main.tf`, `documentation/terraform/observability/cloudtrail.tf`, plus `documentation/terraform/security/main.tf`, `documentation/terraform/bootstrap/main.tf`, `documentation/terraform/ecr/main.tf`, `documentation/terraform/ingestion/providers.tf`, `documentation/terraform/ingestion/outputs.tf`, and the webhook-receiver test file (`documentation/scripts/lambdas/tests/test_webhook_receiver.py`).
+- `git status`/`git diff` were re-checked this run: despite the session's initial status snapshot listing `documentation/terraform/ingestion/main.tf` as modified, a fresh `git diff` against the current `develop` HEAD returns empty — the working tree matches the committed state exactly, so all evidence above reflects the committed code, not any uncommitted edit.
+- The score (81/100) is numerically identical to the prior run's, but this is a coincidence of where the two verified improvements (SEC-F1 closure, `InvokeRuntimeScoped` precise scoping) land in the criteria grid — both affect criteria that were already `Met`/neutral, not the `Partial`/`Missing` criteria that hold the score down (SEC-01/SEC-F4, SEC-10/SEC-F3, SEC-11/SEC-F5, SEC-07/SEC-F2, SEC-05). This is a considered, evidence-based conclusion, not a carried-forward number.
+- No Critical-severity findings were identified (no exploitable hole, unauthenticated write path, or public-writable data store), so pillar maturity is not capped at 2/5 by the capping rule.
+- `terraform validate`/`plan` were not run this session (static-only per context pack); all conclusions are from reading `.tf`/`.py` source directly.
+- Coverage ~95%: not independently assessed — actual IAM Access Analyzer/policy-simulator results (no live AWS access), the contents of `ingestion/terraform.tfvars` (treated as non-secret config), and any manual/undocumented AWS console configuration outside Terraform.
