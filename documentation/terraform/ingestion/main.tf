@@ -151,15 +151,17 @@ resource "aws_iam_role_policy" "worker" {
         Sid    = "InvokeRuntimeScoped"
         Effect = "Allow"
         Action = ["bedrock-agentcore:InvokeAgentRuntime"]
-        # bedrock-agentcore:InvokeAgentRuntime autorise contre l'ARN du
-        # runtime-endpoint, pas l'ARN du runtime seul (l'API le confirme :
-        # AccessDeniedException sur .../runtime-endpoint/DEFAULT). Le
-        # wildcard /runtime-endpoint/* avait été retiré (SEC-03) en pensant
-        # límiter le scope, mais supprimait l'accès requis à l'unique endpoint
-        # réellement invoqué ("DEFAULT", nom fixe côté plateforme AgentCore) —
-        # on scope précisément à cet endpoint plutôt que de réintroduire un
-        # wildcard.
-        Resource = "${local.runtime_arn}/runtime-endpoint/DEFAULT"
+        # bedrock-agentcore:InvokeAgentRuntime a été observé en AccessDenied
+        # tour à tour sur l'ARN du runtime seul ET sur l'ARN du
+        # runtime-endpoint (.../runtime-endpoint/DEFAULT, nom fixe côté
+        # plateforme AgentCore) — les deux sont donc nécessaires. Le wildcard
+        # /runtime-endpoint/* avait été retiré (SEC-03) en pensant limiter le
+        # scope sans casser l'accès ; on liste ici les deux ARNs précisément
+        # plutôt que de réintroduire un wildcard.
+        Resource = [
+          local.runtime_arn,
+          "${local.runtime_arn}/runtime-endpoint/DEFAULT",
+        ]
       }
       # Statement KMS retiré : SSE-SQS (POC sans CMK).
     ]
