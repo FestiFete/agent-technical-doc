@@ -136,16 +136,30 @@ resource "aws_iam_role_policy" "worker" {
       {
         Sid    = "ConsumeQueue"
         Effect = "Allow"
+        # GetQueueAttributes n'est jamais appelé par le code applicatif, mais
+        # il est requis par le poller managé de l'event source mapping
+        # Lambda<->SQS lui-même (infrastructure AWS, pas le code) — retiré par
+        # erreur (SEC-04) en pensant qu'il n'était pas utilisé ; sans lui le
+        # poller échoue silencieusement et les messages s'accumulent en file
+        # sans jamais invoquer la Lambda.
         Action = [
-          "sqs:ReceiveMessage", "sqs:DeleteMessage"
+          "sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"
         ]
         Resource = aws_sqs_queue.main.arn
       },
       {
-        Sid      = "InvokeRuntimeScoped"
-        Effect   = "Allow"
-        Action   = ["bedrock-agentcore:InvokeAgentRuntime"]
-        Resource = local.runtime_arn
+        Sid    = "InvokeRuntimeScoped"
+        Effect = "Allow"
+        Action = ["bedrock-agentcore:InvokeAgentRuntime"]
+        # bedrock-agentcore:InvokeAgentRuntime autorise contre l'ARN du
+        # runtime-endpoint, pas l'ARN du runtime seul (l'API le confirme :
+        # AccessDeniedException sur .../runtime-endpoint/DEFAULT). Le
+        # wildcard /runtime-endpoint/* avait été retiré (SEC-03) en pensant
+        # límiter le scope, mais supprimait l'accès requis à l'unique endpoint
+        # réellement invoqué ("DEFAULT", nom fixe côté plateforme AgentCore) —
+        # on scope précisément à cet endpoint plutôt que de réintroduire un
+        # wildcard.
+        Resource = "${local.runtime_arn}/runtime-endpoint/DEFAULT"
       }
       # Statement KMS retiré : SSE-SQS (POC sans CMK).
     ]
