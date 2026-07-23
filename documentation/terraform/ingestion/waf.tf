@@ -59,13 +59,63 @@ resource "aws_wafv2_web_acl" "webhook" {
   description = "Defense-in-depth devant le webhook public ${local.name} : Core rule set, Known Bad Inputs, rate-limit IP."
   scope       = "CLOUDFRONT"
 
+  # Empêche l'inspection de contenu (Core Rule Set / Known Bad Inputs) de se
+  # limiter aux 16 Ko par défaut : couvre la totalité de la plage acceptée par
+  # WebhookBodySize ci-dessous (max 64 Ko configurable côté CloudFront).
+  association_config {
+    request_body {
+      cloudfront {
+        default_size_inspection_limit = "KB_64"
+      }
+    }
+  }
+
   default_action {
     allow {}
   }
 
+  # Seuil de taille propre au trafic webhook GitHub (remplace le seuil
+  # générique 8 Ko de SizeRestrictions_BODY, mal calibré pour ce endpoint).
+  # 128 Ko couvre largement le pire cas légitime : un commentaire GitHub est
+  # plafonné à 65 536 caractères, plus quelques Ko de métadonnées PR/repo/
+  # expéditeur. oversize_handling=MATCH : un corps que le WAF ne peut pas
+  # inspecter entièrement est traité comme dépassant le seuil (fail-safe).
+  rule {
+    name     = "WebhookBodySize"
+    priority = 1
+
+    action {
+      block {}
+    }
+
+    statement {
+      size_constraint_statement {
+        comparison_operator = "GT"
+        size                = 131072
+
+        field_to_match {
+          body {
+            oversize_handling = "MATCH"
+          }
+        }
+
+        text_transformation {
+          priority = 0
+          type     = "NONE"
+        }
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${local.name}-webhook-body-size"
+      sampled_requests_enabled   = true
+    }
+  }
+
   rule {
     name     = "AWS-AWSManagedRulesCommonRuleSet"
-    priority = 1
+    priority = 2
 
     override_action {
       none {}
@@ -75,6 +125,18 @@ resource "aws_wafv2_web_acl" "webhook" {
       managed_rule_group_statement {
         name        = "AWSManagedRulesCommonRuleSet"
         vendor_name = "AWS"
+
+        # SizeRestrictions_BODY (seuil générique 8 Ko) fait doublon avec notre
+        # propre règle WebhookBodySize ci-dessus (128 Ko, dimensionnée pour ce
+        # endpoint) : Count plutôt que Block, sinon elle bloquerait quand même
+        # tout corps GitHub légitime entre 8 et 128 Ko. Le reste du Core Rule
+        # Set (inspection de contenu) reste en Block.
+        rule_action_override {
+          name = "SizeRestrictions_BODY"
+          action_to_use {
+            count {}
+          }
+        }
       }
     }
 
@@ -87,7 +149,7 @@ resource "aws_wafv2_web_acl" "webhook" {
 
   rule {
     name     = "AWS-AWSManagedRulesKnownBadInputsRuleSet"
-    priority = 2
+    priority = 3
 
     override_action {
       none {}
@@ -116,7 +178,7 @@ resource "aws_wafv2_web_acl" "webhook" {
   # restent en place derrière.
   rule {
     name     = "RateLimitPerIP"
-    priority = 3
+    priority = 4
 
     action {
       block {}
