@@ -56,7 +56,7 @@ resource "aws_cloudwatch_log_group" "waf" {
 resource "aws_wafv2_web_acl" "webhook" {
   provider    = aws.us_east_1
   name        = "${local.name}-webhook-waf"
-  description = "Defense-in-depth devant le webhook public (${local.name}) : Core rule set + Known Bad Inputs + rate-limit IP."
+  description = "Defense-in-depth devant le webhook public ${local.name} : Core rule set, Known Bad Inputs, rate-limit IP."
   scope       = "CLOUDFRONT"
 
   default_action {
