@@ -39,6 +39,22 @@ def _payload(**over):
     return base
 
 
+# --- origine CloudFront (SEC-F1) ----------------------------------------------
+def test_verify_origin_valid():
+    assert handler.verify_origin("s3cr3t", "s3cr3t") is True
+
+
+def test_verify_origin_invalid():
+    assert handler.verify_origin("wrong", "s3cr3t") is False
+    assert handler.verify_origin("", "s3cr3t") is False
+
+
+def test_verify_origin_disabled_when_secret_empty():
+    # secret non configuré (pas de CloudFront devant) -> vérification désactivée.
+    assert handler.verify_origin("", "") is True
+    assert handler.verify_origin("anything", "") is True
+
+
 # --- signature ---------------------------------------------------------------
 def test_verify_signature_valid():
     body = b'{"a":1}'

@@ -1,17 +1,19 @@
 """Lambda webhook-receiver — porte d'entrée sécurisée des webhooks GitHub.
 
 Responsabilités (aucune ne nécessite le token GitHub — moindre privilège) :
-  1. Valider la signature HMAC ``X-Hub-Signature-256`` (rejet si absente/invalide).
-  2. Filtrer : événement ``issue_comment`` créé, sur une PR, contenant le
+  1. Vérifier l'en-tête d'origine CloudFront ``X-Origin-Verify`` (SEC-F1) :
+     rejette tout appel direct à l'URL API Gateway qui contournerait CloudFront+WAF.
+  2. Valider la signature HMAC ``X-Hub-Signature-256`` (rejet si absente/invalide).
+  3. Filtrer : événement ``issue_comment`` créé, sur une PR, contenant le
      ``@mention`` de l'agent.
-  3. Autoriser : dépôt dans l'allowlist ET ``author_association`` autorisée.
-  4. Dédupliquer (PutItem conditionnel DynamoDB sur ``repo#pr#comment_id``).
-  5. Limiter le débit par dépôt (garde-fou anti-DoS : quota par fenêtre glissante).
-  6. Enfiler un message SQS ``{repo_full_name, pr_number, comment_id, correlation_id}``.
+  4. Autoriser : dépôt dans l'allowlist ET ``author_association`` autorisée.
+  5. Dédupliquer (PutItem conditionnel DynamoDB sur ``repo#pr#comment_id``).
+  6. Limiter le débit par dépôt (garde-fou anti-DoS : quota par fenêtre glissante).
+  7. Enfiler un message SQS ``{repo_full_name, pr_number, comment_id, correlation_id}``.
 
 Les détails de la PR (head sha/ref, statut fork) sont résolus plus tard par
-l'agent (qui détient le token). Les fonctions ``verify_signature`` et
-``evaluate_comment`` sont pures (testables sans réseau).
+l'agent (qui détient le token). Les fonctions ``verify_signature``,
+``verify_origin`` et ``evaluate_comment`` sont pures (testables sans réseau).
 """
 from __future__ import annotations
 
@@ -37,6 +39,7 @@ def _env_list(name: str, default: str = "") -> list[str]:
 
 @dataclass
 class Config:
+    origin_verify_secret: str = field(default_factory=lambda: os.environ.get("ORIGIN_VERIFY_SECRET", ""))
     hmac_secret_arn: str = field(default_factory=lambda: os.environ.get("WEBHOOK_HMAC_SECRET_ARN", ""))
     mention_handle: str = field(default_factory=lambda: os.environ.get("MENTION_HANDLE", "@agent-technical-doc"))
     allowed_repos: list[str] = field(default_factory=lambda: _env_list("ALLOWED_REPOSITORIES"))
@@ -53,6 +56,23 @@ class Config:
 
 
 # --- Fonctions pures ---------------------------------------------------------
+def verify_origin(header_value: str, secret: str) -> bool:
+    """Vérifie l'en-tête interne CloudFront→origine ``X-Origin-Verify`` (SEC-F1).
+
+    Défense en profondeur, en temps constant : rejette tout appel qui a
+    contourné CloudFront+WAF pour atteindre directement l'URL API Gateway
+    (une HTTP API ne supporte pas de resource policy pour bloquer ça au
+    niveau réseau). Si ``secret`` est vide (non configuré), la vérification
+    est désactivée — permet de faire tourner la Lambda sans CloudFront devant
+    (tests, environnement local).
+    """
+    if not secret:
+        return True
+    if not header_value:
+        return False
+    return hmac.compare_digest(header_value, secret)
+
+
 def verify_signature(raw_body: bytes, signature_header: str, secret: str) -> bool:
     """Vérifie la signature HMAC-SHA256 GitHub en temps constant."""
     if not signature_header or not secret:
@@ -219,7 +239,15 @@ def lambda_handler(event, context):
     raw, headers = parse_api_event(event)
     correlation_id = headers.get("x-github-delivery", "")
 
-    # 1. Signature HMAC (obligatoire).
+    # 1. Origine CloudFront (SEC-F1) — avant tout le reste : rejet bon marché
+    #    des appels directs à l'URL API Gateway, avant même d'aller lire le
+    #    secret HMAC. Message identique au rejet de signature invalide : pas
+    #    d'oracle permettant de distinguer les deux causes de rejet.
+    if not verify_origin(headers.get("x-origin-verify", ""), cfg.origin_verify_secret):
+        logger.warning("Origine non vérifiée (delivery=%s)", correlation_id)
+        return _response(401, "signature invalide")
+
+    # 2. Signature HMAC (obligatoire).
     secret = _get_secret(cfg.hmac_secret_arn, cfg.region)
     if not verify_signature(raw, headers.get("x-hub-signature-256", ""), secret):
         logger.warning("Signature webhook invalide (delivery=%s)", correlation_id)
@@ -230,7 +258,7 @@ def lambda_handler(event, context):
     except (ValueError, UnicodeDecodeError):
         return _response(400, "payload JSON invalide")
 
-    # 2/3. Filtrage + autorisation.
+    # 3/4. Filtrage + autorisation.
     decision = evaluate_comment(
         payload, cfg,
         event_type=headers.get("x-github-event", ""),
@@ -240,13 +268,13 @@ def lambda_handler(event, context):
         logger.info("Ignoré (%s) delivery=%s", decision.reason, correlation_id)
         return _response(204, f"ignoré: {decision.reason}")
 
-    # 4. Idempotence (repo#pr#comment_id) — dédup des re-livraisons.
+    # 5. Idempotence (repo#pr#comment_id) — dédup des re-livraisons.
     key = f"{decision.repo_full_name}#{decision.pr_number}#{decision.comment_id}"
     if not _claim_idempotency(cfg.idempotency_table, key, correlation_id, cfg.ttl_days, cfg.region):
         logger.info("Doublon ignoré: %s", key)
         return _response(200, "doublon ignoré")
 
-    # 4b. Garde-fou anti-DoS : quota de runs par dépôt et par fenêtre.
+    # 5b. Garde-fou anti-DoS : quota de runs par dépôt et par fenêtre.
     if _rate_limited(cfg.idempotency_table, decision.repo_full_name,
                      cfg.max_runs_per_repo, cfg.rate_window_seconds, cfg.region):
         logger.warning("Quota de runs dépassé pour %s (max=%d / %ds) delivery=%s",
@@ -254,7 +282,7 @@ def lambda_handler(event, context):
                        cfg.rate_window_seconds, correlation_id)
         return _response(429, "quota de runs dépassé pour ce dépôt")
 
-    # 5. Enqueue.
+    # 6. Enqueue.
     _enqueue(cfg.queue_url, {
         "repo_full_name": decision.repo_full_name,
         "pr_number": decision.pr_number,

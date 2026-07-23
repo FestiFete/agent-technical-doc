@@ -15,11 +15,29 @@
 # Défense en profondeur : ce WAF s'ajoute à la vérification HMAC déjà en
 # place dans la Lambda webhook (documentation/scripts/lambdas/webhook-receiver/handler.py)
 # et au throttle de l'API Gateway ($default stage), il ne les remplace pas.
-# Limite connue : l'URL execute-api native de l'API Gateway reste techniquement
-# joignable directement (bypass du WAF) — hors périmètre de SEC-F1 tel que
-# scoré par l'audit ; à traiter séparément si nécessaire (ex. secret partagé
-# en en-tête d'origine, vérifié côté Lambda).
+#
+# Fermeture de la porte directe API Gateway (résiduel SEC-F1, désormais
+# traité) : une HTTP API (aws_apigatewayv2_api) ne supporte pas de resource
+# policy (contrairement aux REST API), donc impossible de bloquer le trafic
+# direct au niveau API Gateway lui-même. À la place, CloudFront ajoute un
+# en-tête secret (X-Origin-Verify, valeur générée par random_password) sur
+# chaque requête envoyée à l'origine ; la Lambda webhook rejette (401,
+# message identique au rejet de signature invalide — pas d'oracle) toute
+# requête sans cet en-tête, AVANT même la vérification HMAC. Un appel direct
+# à l'URL execute-api (sans passer par CloudFront) est donc rejeté
+# applicativement, même si l'URL reste techniquement joignable.
 # ============================================================================
+
+# Secret partagé CloudFront → origine (SEC-F1). Généré par Terraform, connu
+# uniquement de CloudFront (custom_origin_config header) et de la Lambda
+# webhook (variable d'environnement ORIGIN_VERIFY_SECRET) ; jamais journalisé,
+# jamais exposé en dehors du state Terraform (déjà gitignored/chiffré) et de
+# la config Lambda — même niveau d'exposition que les autres valeurs de
+# configuration déjà passées en variable d'environnement dans ce module.
+resource "random_password" "origin_verify" {
+  length  = 32
+  special = false
+}
 
 data "aws_cloudfront_cache_policy" "disabled" {
   name = "Managed-CachingDisabled"
@@ -148,6 +166,13 @@ resource "aws_cloudfront_distribution" "webhook" {
       https_port             = 443
       origin_protocol_policy = "https-only"
       origin_ssl_protocols   = ["TLSv1.2"]
+    }
+
+    # Prouve à la Lambda que la requête est bien passée par CloudFront (donc
+    # par le WAF) — cf. Lambda webhook, vérification ORIGIN_VERIFY_SECRET.
+    custom_header {
+      name  = "X-Origin-Verify"
+      value = random_password.origin_verify.result
     }
   }
 

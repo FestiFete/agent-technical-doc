@@ -190,6 +190,8 @@ resource "aws_lambda_function" "webhook" {
       IDEMPOTENCY_TTL_DAYS        = tostring(local.idempotency_ttl_days)
       MAX_RUNS_PER_REPO           = tostring(var.max_runs_per_repo)
       RATE_WINDOW_SECONDS         = tostring(var.rate_window_seconds)
+      # Rejette tout appel qui ne passe pas par CloudFront+WAF (SEC-F1).
+      ORIGIN_VERIFY_SECRET = random_password.origin_verify.result
     }
   }
 

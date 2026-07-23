@@ -4,7 +4,7 @@ output "webhook_url" {
 }
 
 output "webhook_api_gateway_url" {
-  description = "URL API Gateway directe (origine derrière CloudFront) — debug/diagnostic uniquement, ne pas configurer côté GitHub : elle contourne le WAF"
+  description = "URL API Gateway directe (origine derrière CloudFront) — debug/diagnostic uniquement, ne pas configurer côté GitHub : contourne le WAF et est désormais rejetée par la Lambda (401, ORIGIN_VERIFY_SECRET manquant, SEC-F1)"
   value       = "${aws_apigatewayv2_api.webhook.api_endpoint}/webhook"
 }
 
