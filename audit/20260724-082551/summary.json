@@ -1,0 +1,53 @@
+{
+  "target": "/Users/g.mirambeau/Development/AWS/agent-technical-doc/documentation",
+  "timestamp_utc": "20260724-082551",
+  "mode": "static",
+  "weights": { "security": 1.5, "reliability": 1.3, "operational-excellence": 1.0, "performance-efficiency": 1.0, "cost-optimization": 1.0, "sustainability": 1.0, "architecture": 1.0, "terraform": 1.0, "modularity": 1.0, "decoupling": 1.0, "scalability": 1.0, "maintainability": 1.0 },
+  "global": {
+    "score": 81,
+    "maturity_uncapped": 4,
+    "maturity": 2,
+    "capped": true,
+    "capping_findings": ["TF-F1"],
+    "weighted_sum": 1038.3,
+    "weight_total": 12.8
+  },
+  "orchestrator_adjudications": [
+    { "type": "severity_reclassification", "finding": "REL-F1", "from": "Critical", "to": "High", "rationale": "Evidence proves a serious detection/notification gap (no main-queue age alarm, alarm_actions=[], no ReportBatchItemFailures) but not an imminent-failure/data-loss defect per the Critical definition; sub-agent 'occurred in production' basis unsupported by repo evidence. Reliability pillar maturity restored to score band (3)." },
+    { "type": "factual_reconciliation", "pillar": "security", "criterion": "SEC-10", "note": "CloudTrail IS present (observability/cloudtrail.tf); sub-agent scored it Missing without seeing the file. Effective verdict Partial (GuardDuty/Config/Security Hub still absent); SEC-F2 downgraded to a Medium gap. True security score ~79; reported 77 kept (conservative)." },
+    { "type": "context_pack_correction", "note": "Initial inventory (session-memory) missed ingestion/waf.tf and observability/cloudtrail.tf which exist in current code; pack corrected before dispatching pillars 07-12. Prior 'public API without WAF' Critical is remediated." },
+    { "type": "cap_confirmed", "finding": "TF-F1", "rationale": "Terraform charter classifies unlocked shared state as Critical; evidence solid across 6 backend blocks; global maturity capped at 2/5 until resolved." }
+  ],
+  "pillars": [
+    { "pillar": "operational-excellence", "title": "Operational Excellence", "applicable": true, "status": "ok", "score": 71, "maturity": 3, "coverage": 0.95, "confidence": "medium", "top_findings": ["OPS-F1 (High) no CI/CD", "OPS-F2 (Medium) alarms have no notification target", "OPS-F3 (Medium) no rollback/image-version strategy"], "detail_file": "01-operational-excellence.md" },
+    { "pillar": "security", "title": "Security", "applicable": true, "status": "ok", "score": 77, "score_reconciled": 79, "maturity": 4, "coverage": 0.9, "confidence": "medium", "top_findings": ["SEC-F1 (Medium) no CMK", "SEC-F2 (Medium, reconciled) detective controls partial - CloudTrail present, GuardDuty/Config/SecurityHub absent", "SEC-F3 (Medium) no secret rotation"], "note": "Prior public-API-without-WAF Critical REMEDIATED via CloudFront+WAFv2+X-Origin-Verify. No open Critical/High -> does not cap.", "detail_file": "02-security.md" },
+    { "pillar": "reliability", "title": "Reliability", "applicable": true, "status": "ok", "score": 56, "maturity": 3, "maturity_subagent_selfcapped": 2, "coverage": 0.95, "confidence": "high", "top_findings": ["REL-F1 (High, reclassified from Critical) no silent-stall alarm + alarm_actions=[]", "REL-F2 (High) permanent worker errors dropped, no DLQ/metric", "REL-F3 (High) no blast-radius containment / safe-change", "REL-F4 (Medium) no jitter, AgentCore client no explicit timeout"], "detail_file": "03-reliability.md" },
+    { "pillar": "performance-efficiency", "title": "Performance Efficiency", "applicable": true, "status": "ok", "score": 79, "maturity": 4, "coverage": 0.95, "confidence": "medium", "top_findings": ["PERF-F1 (Medium) no Bedrock prompt caching", "PERF-F2 (Low) sequential reads + in-memory tarball", "PERF-F3/F4 (Low) no perf SLO / utilization metrics"], "detail_file": "04-performance-efficiency.md" },
+    { "pillar": "cost-optimization", "title": "Cost Optimization", "applicable": true, "status": "ok", "score": 86, "maturity": 4, "coverage": 0.95, "confidence": "medium", "top_findings": ["COST-F1 (Medium) no budgets/anomaly detection", "COST-F2 (Low) partial cost-allocation tagging"], "detail_file": "05-cost-optimization.md" },
+    { "pillar": "sustainability", "title": "Sustainability", "applicable": true, "status": "ok", "score": 98, "maturity": 5, "coverage": 1.0, "confidence": "high", "top_findings": ["SUS-F1 (Low) region rationale undocumented", "SUS-F2 (Info) 900s idle session"], "detail_file": "06-sustainability.md" },
+    { "pillar": "architecture", "title": "Architecture", "applicable": true, "status": "ok", "score": 96, "maturity": 5, "coverage": 0.9, "confidence": "high", "top_findings": ["ARC-F1 (Medium) design.md drift vs code", "ARC-F2 (Low) prose decisions not formal ADRs"], "detail_file": "07-architecture.md" },
+    { "pillar": "terraform", "title": "Terraform - Structure & Best Practices", "applicable": true, "status": "ok", "score": 80, "maturity": 4, "coverage": 0.95, "confidence": "high", "top_findings": ["TF-F1 (CRITICAL) unlocked shared S3 state -> CAPS GLOBAL", "TF-F2 (Medium) account/region hardcoded in backend", "TF-F3 (Medium) no prevent_destroy on critical stateful resources"], "detail_file": "08-terraform.md" },
+    { "pillar": "modularity", "title": "Modularity", "applicable": true, "status": "ok", "score": 89, "maturity": 4, "coverage": 0.95, "confidence": "high", "top_findings": ["MOD-F1 (Medium) duplicated GitHub HTTP plumbing", "MOD-F2 (Low) cross-deployment duplication", "MOD-F3 (Info) import-time env constants"], "detail_file": "09-modularity.md" },
+    { "pillar": "decoupling", "title": "Decoupling", "applicable": true, "status": "ok", "score": 92, "maturity": 5, "coverage": 0.95, "confidence": "high", "top_findings": ["DEC-F1 (Medium) no contract versioning", "DEC-F2 (Low) build-time module coupling via remote_state"], "detail_file": "10-decoupling.md" },
+    { "pillar": "scalability", "title": "Scalability", "applicable": true, "status": "ok", "score": 78, "maturity": 4, "coverage": 1.0, "confidence": "high", "top_findings": ["SCAL-F1 (Medium) per-repo rate counter hot item", "SCAL-F2 (Medium) fixed worker concurrency 5, no capacity model", "SCAL-F3 (Low) tarball fully in memory", "SCAL-F4 (Low) no load test"], "detail_file": "11-scalability.md" },
+    { "pillar": "maintainability", "title": "Maintainability", "applicable": true, "status": "ok", "score": 81, "maturity": 4, "coverage": 1.0, "confidence": "high", "top_findings": ["MNT-F1 (Medium) no lint/CI gate", "MNT-F2 (Medium) floor-only dep pins, no lock/pip-audit", "MNT-F3 (Low) type hints unenforced"], "detail_file": "12-maintainability.md" }
+  ],
+  "roadmap": [
+    { "priority": "P1", "type": "quick_win", "pillar": "terraform", "finding_id": "TF-F1", "action": "Enable state locking (use_lockfile=true or DynamoDB lock table) on every S3 backend -> removes global cap", "effort": "S" },
+    { "priority": "P1", "type": "quick_win", "pillar": "reliability", "finding_id": "REL-F1", "action": "Create SNS topic + wire alarm_actions; add main-queue ApproximateAgeOfOldestMessage alarm", "effort": "S" },
+    { "priority": "P1", "type": "quick_win", "pillar": "reliability", "finding_id": "REL-F2", "action": "Enable ReportBatchItemFailures or emit PermanentErrors EMF metric + alarm", "effort": "M" },
+    { "priority": "P1", "type": "structural", "pillar": "operational-excellence", "finding_id": "OPS-F1", "action": "CI/CD: pytest + terraform fmt/validate + ruff + pip-audit gate, then build/push + ordered apply; post-apply ingestion smoke test (also REL-F3)", "effort": "M" },
+    { "priority": "P2", "type": "quick_win", "pillar": "terraform", "finding_id": "TF-F3", "action": "prevent_destroy on state bucket, secrets, idempotency table, CloudTrail bucket", "effort": "S" },
+    { "priority": "P2", "type": "quick_win", "pillar": "cost-optimization", "finding_id": "COST-F1", "action": "AWS Budgets + Cost Anomaly Detection scoped to project tags", "effort": "S" },
+    { "priority": "P2", "type": "quick_win", "pillar": "architecture", "finding_id": "ARC-F1", "action": "Reconcile design.md with 7-module layout / Python 3.12; point to ARCHITECTURE.md", "effort": "S" },
+    { "priority": "P2", "type": "structural", "pillar": "security", "finding_id": "SEC-F1", "action": "Restore SSE-KMS CMKs (Secrets Manager, DynamoDB, SQS) + rotation once kms:CreateKey available", "effort": "M" },
+    { "priority": "P2", "type": "structural", "pillar": "security", "finding_id": "SEC-F2", "action": "Add/reference GuardDuty + Config + Security Hub baseline (CloudTrail already present)", "effort": "M" },
+    { "priority": "P2", "type": "structural", "pillar": "maintainability", "finding_id": "MNT-F2", "action": "Hash-pin Python deps (requirements.lock) + pip-audit in CI", "effort": "M" },
+    { "priority": "P2", "type": "quick_win", "pillar": "performance-efficiency", "finding_id": "PERF-F1", "action": "Enable Bedrock prompt caching on the stable system-prompt prefix", "effort": "S" },
+    { "priority": "P2", "type": "structural", "pillar": "scalability", "finding_id": "SCAL-F2", "action": "Derive worker_max_concurrency from Bedrock/AgentCore quotas; shard/justify per-repo counter", "effort": "M" },
+    { "priority": "P3", "type": "quick_win", "pillar": "terraform", "finding_id": "TF-F2", "action": "Partial backend config to remove hardcoded account id/region", "effort": "S" },
+    { "priority": "P3", "type": "quick_win", "pillar": "decoupling", "finding_id": "DEC-F1", "action": "Add schema_version to SQS/runtime payloads", "effort": "S" },
+    { "priority": "P3", "type": "structural", "pillar": "modularity", "finding_id": "MOD-F1", "action": "Extract shared _githttp helper used by github_client and github_auth", "effort": "M" }
+  ],
+  "notes": "Static audit, read-only. Full per-pillar JSON (criteria grids, evidence, findings, alternatives) is in the NN-<pillar>.md detail files; this summary embeds pillar headline objects + findings for a machine-readable index. Global score 81/100 (uncapped maturity 4). Capped to maturity 2/5 by TF-F1 (unlocked Terraform state) - a single low-effort fix. Orchestrator adjudications recorded above (REL-F1 severity, SEC-10/CloudTrail reconciliation, context-pack correction)."
+}
