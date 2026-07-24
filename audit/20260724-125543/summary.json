@@ -1,0 +1,77 @@
+{
+  "target": "/Users/g.mirambeau/Development/AWS/agent-technical-doc",
+  "timestamp_utc": "20260724-125543",
+  "mode": "static",
+  "weights": {
+    "security": 1.5,
+    "reliability": 1.3,
+    "operational-excellence": 1.0,
+    "performance-efficiency": 1.0,
+    "cost-optimization": 1.0,
+    "sustainability": 1.0,
+    "architecture": 1.0,
+    "terraform": 1.0,
+    "modularity": 1.0,
+    "decoupling": 1.0,
+    "scalability": 1.0,
+    "maintainability": 1.0
+  },
+  "org_constraint": "Deployment SSO role has org-level explicit DENY on CloudTrail (CreateTrail+DescribeTrails), kms:CreateKey, and likely GuardDuty. These are centrally managed at org level. CloudTrail disabled locally via observability/terraform.tfvars (enable_cloudtrail=false). Detective controls and CMK absence scored Partial (org-managed, unverifiable statically), NOT Missing; no finding penalizes the disabling.",
+  "global": {
+    "score": 83,
+    "maturity_uncapped": 4,
+    "maturity": 2,
+    "capped": true,
+    "capping_findings": ["TF-F1"]
+  },
+  "pillars_summary": [
+    { "pillar": "operational-excellence", "score": 64, "maturity": 3, "weight": 1.0, "top_severity": "High" },
+    { "pillar": "security", "score": 89, "maturity": 4, "weight": 1.5, "top_severity": "Medium" },
+    { "pillar": "reliability", "score": 73, "maturity": 3, "weight": 1.3, "top_severity": "High" },
+    { "pillar": "performance-efficiency", "score": 80, "maturity": 4, "weight": 1.0, "top_severity": "Medium" },
+    { "pillar": "cost-optimization", "score": 85, "maturity": 4, "weight": 1.0, "top_severity": "Medium" },
+    { "pillar": "sustainability", "score": 98, "maturity": 5, "weight": 1.0, "top_severity": "Info" },
+    { "pillar": "architecture", "score": 93, "maturity": 5, "weight": 1.0, "top_severity": "Medium" },
+    { "pillar": "terraform", "score": 74, "maturity": 3, "weight": 1.0, "top_severity": "Critical" },
+    { "pillar": "modularity", "score": 89, "maturity": 4, "weight": 1.0, "top_severity": "Medium" },
+    { "pillar": "decoupling", "score": 86, "maturity": 4, "weight": 1.0, "top_severity": "Low" },
+    { "pillar": "scalability", "score": 88, "maturity": 4, "weight": 1.0, "top_severity": "Medium" },
+    { "pillar": "maintainability", "score": 76, "maturity": 4, "weight": 1.0, "top_severity": "High" }
+  ],
+  "computation": {
+    "weighted_sum": 1061.4,
+    "weight_sum": 12.8,
+    "global_score_raw": 82.92,
+    "note": "global_score = 1061.4 / 12.8 = 82.92 -> 83. Uncapped maturity 4 (75-89). Capped to 2/5 by open Critical TF-F1."
+  },
+  "consolidated_critical_high": [
+    { "id": "TF-F1", "severity": "Critical", "pillar": "terraform", "title": "Shared S3 Terraform state without locking", "evidence": ["terraform/observability/providers.tf:11-16"] },
+    { "id": "REL-F2", "severity": "High", "pillar": "reliability", "title": "Permanent worker errors silently dropped (no DLQ, no metric)", "evidence": ["scripts/lambdas/worker-dispatcher/handler.py:106", "terraform/ingestion/main.tf:232"] },
+    { "id": "OPS-F1", "severity": "High", "pillar": "operational-excellence", "title": "No CI/CD pipeline; tests not enforced as release gate", "evidence": ["documentation/README.md:157"] },
+    { "id": "MNT-F1", "severity": "High", "pillar": "maintainability", "title": "No linter/formatter configured nor CI quality gate", "evidence": ["absence pyproject.toml/ruff.toml/.github/workflows"] }
+  ],
+  "roadmap": [
+    { "priority": "P0", "type": "quick_win", "pillar": "terraform", "finding_id": "TF-F1", "action": "Enable use_lockfile=true + required_version>=1.10.0 on the 7 s3 backends (releases the global maturity cap -> 4/5).", "effort": "S" },
+    { "priority": "P1", "type": "quick_win", "pillar": "reliability", "finding_id": "REL-F2", "action": "Enable function_response_types=[ReportBatchItemFailures] (or explicit DLQ send) + PermanentFailures EMF metric.", "effort": "S" },
+    { "priority": "P1", "type": "quick_win", "pillar": "security", "finding_id": "SEC-F1", "action": "Pin Python deps (== + hashes), pin base image by digest, enable ECR scan_on_push.", "effort": "S" },
+    { "priority": "P1", "type": "quick_win", "pillar": "terraform", "finding_id": "TF-F3", "action": "Add prevent_destroy on state bucket, idempotency table, secrets.", "effort": "S" },
+    { "priority": "P2", "type": "quick_win", "pillar": "terraform", "finding_id": "TF-F2", "action": "Externalize backend bucket/account/region via -backend-config.", "effort": "S" },
+    { "priority": "P2", "type": "quick_win", "pillar": "cost-optimization", "finding_id": "COST-F1", "action": "Add monthly aws_budgets_budget (80/100% thresholds) notifying the existing SNS alarm topic.", "effort": "S" },
+    { "priority": "P2", "type": "quick_win", "pillar": "reliability", "finding_id": "REL-F3", "action": "Add jitter to exponential backoff.", "effort": "S" },
+    { "priority": "P2", "type": "quick_win", "pillar": "terraform", "finding_id": "TF-F4", "action": "Restore default_tags in the security module (obsolete CMK workaround).", "effort": "S" },
+    { "priority": "P1", "type": "structural", "pillar": "operational-excellence", "finding_id": "OPS-F1", "action": "CI/CD pipeline: terraform fmt/validate/plan + ruff + mypy + pytest --cov gate + dep/IaC scanning + gated apply. Addresses OPS-F1, MNT-F1, TF-F5, SEC-F4.", "effort": "M" },
+    { "priority": "P2", "type": "structural", "pillar": "architecture", "finding_id": "ARC-F1", "action": "Document DR/RTO/RPO + assumed mono-region for POC (S); for prod PITR + IaC-driven multi-region redeploy (L).", "effort": "L" },
+    { "priority": "P2", "type": "structural", "pillar": "performance-efficiency", "finding_id": "PERF-F1", "action": "Bound tarball size and stream extraction (stop at read caps) for constant memory footprint.", "effort": "M" },
+    { "priority": "P2", "type": "structural", "pillar": "scalability", "finding_id": "SCAL-F1", "action": "Define a capacity model (runs/h) tying worker concurrency to granted Bedrock TPS; add SLO + load test.", "effort": "M" }
+  ],
+  "deliverables": {
+    "context_pack": "_context/inventory.md",
+    "pillar_detail_files": [
+      "01-operational-excellence.md", "02-security.md", "03-reliability.md",
+      "04-performance-efficiency.md", "05-cost-optimization.md", "06-sustainability.md",
+      "07-architecture.md", "08-terraform.md", "09-modularity.md",
+      "10-decoupling.md", "11-scalability.md", "12-maintainability.md"
+    ],
+    "note": "Full per-pillar JSON objects (criteria grids, strengths, findings with evidence and alternatives) are in the corresponding NN-*.md detail files. This summary embeds the aggregate, scores, capping decision and roadmap."
+  }
+}
