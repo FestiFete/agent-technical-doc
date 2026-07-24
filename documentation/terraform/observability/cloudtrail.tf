@@ -182,7 +182,7 @@ resource "aws_cloudwatch_metric_alarm" "iam_changes" {
   comparison_operator = "GreaterThanThreshold"
   treat_missing_data  = "notBreaching"
   alarm_description   = "Une politique ou un rôle IAM a été modifié dans le compte (SEC-F3)."
-  alarm_actions       = var.alarm_actions
+  alarm_actions       = local.alarm_targets
 }
 
 # ─── Metric filter + alarme : accès Secrets Manager ─────────────────────────
@@ -214,7 +214,7 @@ resource "aws_cloudwatch_metric_alarm" "secrets_access" {
   comparison_operator = "GreaterThanThreshold"
   treat_missing_data  = "notBreaching"
   alarm_description   = "Volume d'appels secretsmanager:GetSecretValue au-delà du seuil attendu (SEC-F3)."
-  alarm_actions       = var.alarm_actions
+  alarm_actions       = local.alarm_targets
 }
 
 # ─── GuardDuty : détection continue (comportement anormal, credentials compromis) ──

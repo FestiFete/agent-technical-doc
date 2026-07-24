@@ -14,6 +14,33 @@ locals {
   dlq_name   = "${local.name}-dlq"
   queue_name = "${local.name}-queue"
   runtime_ns = "AgentCore/Runtime/${var.agent_name}"
+
+  # Cibles de notification des alarmes (REL-F1) : le topic créé ici + tout ARN
+  # additionnel fourni par l'appelant. aws_sns_topic.alarms[*].arn vaut [] si
+  # var.create_alarm_topic = false, donc les alarmes restent valides sans topic.
+  alarm_targets = concat(var.alarm_actions, aws_sns_topic.alarms[*].arn)
+}
+
+# ============================================================================
+# Notification des alarmes — topic SNS (REL-F1)
+# ============================================================================
+# Sans destination, toutes les alarmes se déclenchaient dans le vide (alarm_actions
+# défaut []). Ce topic centralise la notification ; un abonnement email optionnel
+# est créé si var.alarm_email est renseignée.
+# Note : pas de chiffrement KMS sur le topic — un topic SSE avec la clé gérée AWS
+# (alias/aws/sns) empêche le service CloudWatch d'y publier (impossible d'accorder
+# le principal au key policy d'une clé managée), ce qui casserait la notification.
+# Cohérent avec le contournement CMK documenté ailleurs (DENY kms:CreateKey).
+resource "aws_sns_topic" "alarms" {
+  count = var.create_alarm_topic ? 1 : 0
+  name  = "${local.name}-alarms"
+}
+
+resource "aws_sns_topic_subscription" "alarms_email" {
+  count     = var.create_alarm_topic && var.alarm_email != "" ? 1 : 0
+  topic_arn = aws_sns_topic.alarms[0].arn
+  protocol  = "email"
+  endpoint  = var.alarm_email
 }
 
 # ============================================================================
@@ -33,8 +60,8 @@ resource "aws_cloudwatch_metric_alarm" "dlq_not_empty" {
   comparison_operator = "GreaterThanThreshold"
   treat_missing_data  = "notBreaching"
   alarm_description   = "Des messages sont en DLQ (runs de documentation en échec)."
-  alarm_actions       = var.alarm_actions
-  ok_actions          = var.alarm_actions
+  alarm_actions       = local.alarm_targets
+  ok_actions          = local.alarm_targets
 }
 
 # 2. Erreurs de la Lambda worker.
@@ -50,7 +77,7 @@ resource "aws_cloudwatch_metric_alarm" "worker_errors" {
   comparison_operator = "GreaterThanThreshold"
   treat_missing_data  = "notBreaching"
   alarm_description   = "Trop d'erreurs de la Lambda worker."
-  alarm_actions       = var.alarm_actions
+  alarm_actions       = local.alarm_targets
 }
 
 # 3. Erreurs de la Lambda webhook.
@@ -66,7 +93,28 @@ resource "aws_cloudwatch_metric_alarm" "webhook_errors" {
   comparison_operator = "GreaterThanThreshold"
   treat_missing_data  = "notBreaching"
   alarm_description   = "Trop d'erreurs de la Lambda webhook."
-  alarm_actions       = var.alarm_actions
+  alarm_actions       = local.alarm_targets
+}
+
+# 4. Stall silencieux du pipeline (REL-F1) — le plus vieux message de la file
+# principale dépasse le seuil : le poller SQS→worker ne consomme plus (perte
+# d'IAM sqs:*, worker en échec systématique, etc.). Ni worker_errors ni
+# dlq_not_empty ne couvrent ce cas (le worker n'est jamais invoqué, rien ne part
+# en DLQ), d'où cette alarme dédiée sur l'âge du message.
+resource "aws_cloudwatch_metric_alarm" "main_queue_stalled" {
+  alarm_name          = "${local.name}-main-queue-stalled"
+  namespace           = "AWS/SQS"
+  metric_name         = "ApproximateAgeOfOldestMessage"
+  dimensions          = { QueueName = local.queue_name }
+  statistic           = "Maximum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = var.queue_max_age_seconds
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_description   = "Le plus vieux message de la file principale dépasse ${var.queue_max_age_seconds}s : le pipeline SQS vers worker ne consomme plus (stall silencieux)."
+  alarm_actions       = local.alarm_targets
+  ok_actions          = local.alarm_targets
 }
 
 # ============================================================================
@@ -157,6 +205,22 @@ resource "aws_cloudwatch_dashboard" "main" {
             ["...", "Outcome", "skipped_duplicate", { label = "skipped_duplicate" }]
           ]
         }
+      },
+      {
+        type = "metric", x = 0, y = 20, width = 12, height = 6,
+        properties = {
+          title  = "SQS — âge du plus vieux message (stall)",
+          region = var.aws_region,
+          view   = "timeSeries",
+          stat   = "Maximum",
+          annotations = {
+            horizontal = [{ label = "seuil stall", value = var.queue_max_age_seconds }]
+          },
+          metrics = [
+            ["AWS/SQS", "ApproximateAgeOfOldestMessage", "QueueName", local.queue_name, { label = "queue (s)" }],
+            ["AWS/SQS", "ApproximateAgeOfOldestMessage", "QueueName", local.dlq_name, { label = "DLQ (s)" }]
+          ]
+        }
       }
     ]
   })
@@ -165,4 +229,9 @@ resource "aws_cloudwatch_dashboard" "main" {
 output "dashboard_name" {
   value       = aws_cloudwatch_dashboard.main.dashboard_name
   description = "Nom du dashboard CloudWatch"
+}
+
+output "alarm_topic_arn" {
+  value       = var.create_alarm_topic ? aws_sns_topic.alarms[0].arn : null
+  description = "ARN du topic SNS des alarmes (null si non créé). Abonner email/Slack/PagerDuty ici."
 }

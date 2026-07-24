@@ -20,8 +20,27 @@ variable "state_bucket" {
 
 variable "alarm_actions" {
   type        = list(string)
-  description = "ARNs SNS notifiés par les alarmes (vide = pas de notification)"
+  description = "ARNs SNS additionnels notifiés par les alarmes, EN PLUS du topic créé par ce module (var.create_alarm_topic). Laisser vide en usage nominal."
   default     = []
+}
+
+# --- Notification des alarmes (REL-F1) ---------------------------------------
+variable "create_alarm_topic" {
+  type        = bool
+  description = "Crée un topic SNS dédié aux alarmes et y branche toutes les alarmes du module. Désactiver uniquement si un topic existant est fourni via var.alarm_actions."
+  default     = true
+}
+
+variable "alarm_email" {
+  type        = string
+  description = "Adresse email abonnée au topic d'alarmes (optionnel). Si renseignée, une confirmation d'abonnement SNS est envoyée. Vide = pas d'abonnement email (brancher un abonné manuellement ou via var.alarm_actions)."
+  default     = ""
+}
+
+variable "queue_max_age_seconds" {
+  type        = number
+  description = "Seuil d'âge (s) du plus vieux message de la file principale au-delà duquel le pipeline est considéré bloqué (stall silencieux). Un message est normalement consommé en secondes (worker asynchrone), donc un âge élevé = le poller/worker ne consomme plus."
+  default     = 900
 }
 
 variable "agent_name" {
