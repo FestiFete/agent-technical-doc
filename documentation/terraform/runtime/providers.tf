@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.6.0"
+  required_version = ">= 1.10.0"
 
   required_providers {
     aws = {
@@ -13,10 +13,11 @@ terraform {
   }
 
   backend "s3" {
-    bucket  = "amzn-agent-technical-doc-statetf-375039967495-eu-central-1"
-    region  = "eu-central-1"
-    key     = "runtime/terraform.tfstate"
-    encrypt = true
+    bucket       = "amzn-agent-technical-doc-statetf-375039967495-eu-central-1"
+    region       = "eu-central-1"
+    key          = "runtime/terraform.tfstate"
+    encrypt      = true
+    use_lockfile = true
   }
 }
 
